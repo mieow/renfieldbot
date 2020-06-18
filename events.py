@@ -4,6 +4,7 @@ from tabulate import tabulate
 import mysql.connector
 from datetime import date
 from datetime import datetime
+import renfield_sql
 
 
 class Events(commands.Cog):
@@ -14,17 +15,17 @@ class Events(commands.Cog):
 	
 	@commands.command(name='signin', help='Sign In to the event')
 	async def signin(self, ctx, *, player: str=""):
-		mydb = self.bot.db
-		mycursor = mycursor = mydb.cursor()
-		# TODO: fix - signing in to no/deleted event
-		# TODO: set display name to be the character name
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
+		# TODO: update player name if given again
 		author = ctx.message.author.display_name
 		nameid = ctx.message.author.id
 		# add them to the members table if they don't exist
 		count = 0
 		try:
-			sql = "select count(member_id) from members where name = '{}'".format(nameid)
-			mycursor.execute(sql)
+			sql = "select count(member_id) from members where name = %s"
+			val = ("{}".format(nameid), )
+			mycursor.execute(sql, val)
 			countall = mycursor.fetchall()
 			count = countall[0][0]
 			#await ctx.send('Congratulations Master. I checked for your code name {} on the members list.'.format(nameid))
@@ -33,6 +34,7 @@ class Events(commands.Cog):
 			await ctx.send('I\'m sorry, Master {}, I was unable to check your name on the member list.'.format(nameid))	
 		
 		member_id = 0
+		playername = ""
 		if count == 0 and player == "":
 			await ctx.send('I\'m sorry, Master, please let me know your Out Of Character name for the membership records')
 		elif count == 0:
@@ -43,6 +45,7 @@ class Events(commands.Cog):
 				mycursor.execute(sql, val)
 				mydb.commit()
 				member_id = mycursor.lastrowid
+				playername = player
 				#await ctx.send('Thank you, Master. I have added your name to the members list.')
 			except Exception as e:
 				print(e)
@@ -52,16 +55,29 @@ class Events(commands.Cog):
 
 			# or get their member_id from the the table
 			try:
-				sql = "select member_id from members where name = '{}'".format(nameid)
-				mycursor.execute(sql)
+				sql = "select member_id, playername from members where name = %s"
+				val = ("{}".format(nameid), )
+				mycursor.execute(sql, val)
 				member_ids = mycursor.fetchall()
 				member_id = member_ids[0][0]
+				playername = member_ids[0][1]
 				#await ctx.send('Thank you, Master. I have confirmed that you are a member with membership number {}.'.format(member_id))	
 			except Exception as e:
 				print(e)
 				await ctx.send('I\'m sorry, Master, I was unable to find your membership number.')
 
 		if member_id > 0:
+		
+			if playername != player and player != "":
+				try:
+					sql = "UPDATE members SET playername = %s WHERE member_id = %s"				
+					val = (player, member_id)
+					mycursor.execute(sql, val)
+					mydb.commit()
+					await ctx.send('I had you listed here as {} but I suppose you can call yourself {} if you want, instead.'.format(playername, player))	
+				except Exception as e:
+					print(e)
+					await ctx.send('I\'m sorry, Master, I was unable to update your membership number.')
 			
 			# Is there an event today and has it started?
 			isevent = 0
@@ -117,19 +133,20 @@ class Events(commands.Cog):
 				await ctx.send('I\'m sorry Master {}, there is no event currently in progress'.format(author))
 		else:
 			await ctx.send('I\'m sorry Master {}, your membership has not been confirmed'.format(author))
+		mydb.disconnect()
 		
 
-	# @signin.error
-	# async def signin_error(ctx, error):
-		# if isinstance(error, commands.MissingRequiredArgument):
-			# await ctx.send("I'm sorry Master, Who should I say is attending the event?")
+	@signin.error
+	async def signin_error(ctx, error):
+		if isinstance(error, commands.MissingRequiredArgument):
+			await ctx.send("I'm sorry Master, Who should I say is attending the event?")
 
 
 	@commands.command(name='new', help='Schedule a new LARP event', usage='<name> dd/mm/yyyy [08:00pm]')
 	@commands.has_role('storytellers')
 	async def new(self, ctx, name: str, date: str, time: str='08:00pm'):
-		mydb = self.bot.db
-		mycursor = mycursor = mydb.cursor()
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
 		author = ctx.message.author.display_name
 		server = ctx.message.guild.name
 		date_time = '{} {}'.format(date, time)
@@ -172,12 +189,11 @@ class Events(commands.Cog):
 			except Exception as e:
 				await ctx.send('I\'m sorry, Master, I could not complete your command')
 				print(e)
+		mydb.disconnect()
 
-	@new.error
-	async def new_error(ctx, error):
+	async def cog_command_error(self, ctx, error):
 		if isinstance(error, commands.MissingRequiredArgument):
-			await ctx.send("I'm sorry Master, I need more information. Can you tell me the {} of the event?".format(error.param.name))
-		
+			await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
 
 
 	@commands.command(name='list', usage='[all | next | <event>]', brief='list game events and attendance', help='list game events and attendance.\n\nall\t: all events and attendance\nnext\t: next event\n<name>\t: list of attendees')
@@ -185,11 +201,12 @@ class Events(commands.Cog):
 		'''Displays the list of current events
 			example: .list
 		'''
+		# TODO: NEXT EVENT DOESN'T SHOW NEXT ONE FROM NOW
 		# list	 - list next event
 		# list all - list events and attendance numbers
 		# list <event> - list who attended the event (ST Only)
-		mydb = self.bot.db
-		mycursor = mycursor = mydb.cursor()
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
 		author = ctx.message.author.display_name
 		guild = ctx.message.guild.name
 		datetoday = date.today()
@@ -212,7 +229,7 @@ class Events(commands.Cog):
 			elif action == 'next':
 				# list next event
 				headers = ['Name', 'Date']
-				sql = "SELECT * FROM events WHERE server = '{}' ORDER BY eventdate LIMIT 1".format(guild)
+				sql = "SELECT * FROM events WHERE server = '{}' AND now() < eventdate ORDER BY eventdate LIMIT 1".format(guild)
 				mycursor.execute(sql)
 				events = mycursor.fetchall()
 				await ctx.send("Master {}, the next event is {} and it takes place on the {}".format(author, events[0][1], events[0][3]))
@@ -253,13 +270,14 @@ class Events(commands.Cog):
 		except Exception as e:
 			await ctx.send("I'm sorry Master, I am unable to provide the event details you requested")
 			print(e)
+		mydb.disconnect()
 
 
 	@commands.command(name='delete', help='Delete an event')
 	@commands.has_role('storytellers')
 	async def delete(self, ctx, name: str):
-		mydb = self.bot.db
-		mycursor = mycursor = mydb.cursor()
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
 		author = ctx.message.author.display_name
 		guild = ctx.message.guild.name
 		# check if event exists before trying to delete it
@@ -295,11 +313,17 @@ class Events(commands.Cog):
 				print(e)
 		else:
 			await ctx.send('I\'m sorry, Master {}, the {} event does not exist'.format(author, name))	
+		mydb.disconnect()
 
-	@delete.error
-	async def delete_error(ctx, error):
+	# @delete.error
+	# async def delete_error(ctx, error):
+		# if isinstance(error, commands.MissingRequiredArgument):
+			# await ctx.send("I'm sorry Master, I need more information. Can you tell me the {} of the event?".format(error.param.name))
+
+	async def cog_command_error(self, ctx, error):
 		if isinstance(error, commands.MissingRequiredArgument):
-			await ctx.send("I'm sorry Master, I need more information. Can you tell me the {} of the event?".format(error.param.name))
+			await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
+
 
 def setup(bot):
 	bot.add_cog(Events(bot))

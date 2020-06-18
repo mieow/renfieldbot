@@ -2,6 +2,7 @@ import discord
 import mysql.connector
 from discord.ext import commands
 from tabulate import tabulate
+import renfield_sql
 
 
 class Compliments(commands.Cog):
@@ -13,8 +14,10 @@ class Compliments(commands.Cog):
 	@commands.command(name='addnice', help='Add a compliment')
 	@commands.has_role('storytellers')
 	async def addnice(self, ctx, *, compliment):
-		mydb = self.bot.db
-		mycursor = mycursor = mydb.cursor()
+		#mydb = self.bot.db
+		#mycursor = mydb.cursor()
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
 		try:
 			sql = "INSERT INTO niceness (compliment) VALUES (%s)"
 			val = (compliment,)
@@ -24,6 +27,7 @@ class Compliments(commands.Cog):
 		except Exception as e:
 			await ctx.send('I\'m sorry, Master, my memory is failing me.')
 			print(e)
+		mydb.disconnect()
 
 	@addnice.error
 	async def addnice_error(ctx, error):
@@ -33,8 +37,10 @@ class Compliments(commands.Cog):
 	@commands.command(name='listnice', help='List all the compliments')
 	@commands.has_role('storytellers')
 	async def listnice(self, ctx):
-		mydb = self.bot.db
-		mycursor = mycursor = mydb.cursor()
+		#mydb = self.bot.db
+		#mycursor = mydb.cursor()
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
 		try:
 			sql = "SELECT * FROM niceness ORDER BY compliment"
 			mycursor.execute(sql)
@@ -42,16 +48,27 @@ class Compliments(commands.Cog):
 			headers = ['ID', 'Compliment']
 			rows = [[e[0], e[1]] for e in events]
 			table = tabulate(rows, headers)
-			await ctx.send('```\n' + table + '```')
+			
+			f = open("/tmp/nice.txt", "w")
+			f.write(table)
+			f.close()
+			
+			with open('/tmp/nice.txt', 'rb') as fp:
+				await ctx.send(file=discord.File(fp, 'nice.txt'))
+			
+			#await ctx.send('```\n' + table + '```')
 		except Exception as e:
 			await ctx.send("I'm sorry Master, I am unable to recall all the compliments.")
 			print(e)
+		mydb.disconnect()
 
 	@commands.command(name='deletenice', help='Delete a compliments')
 	@commands.has_role('storytellers')
 	async def deletenice(self, ctx, ID: int):
-		mydb = self.bot.db
-		mycursor = mycursor = mydb.cursor()
+		#mydb = self.bot.db
+		#mycursor = mydb.cursor()
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
 		try:
 			sql = "DELETE FROM `niceness` WHERE id = '%s'"
 			val = (ID,)
@@ -61,6 +78,7 @@ class Compliments(commands.Cog):
 		except Exception as e:
 			await ctx.send("I'm sorry Master, I cannot forget that compliment.")
 			print(e)
+		mydb.disconnect()
 
 
 	@deletenice.error
@@ -71,8 +89,11 @@ class Compliments(commands.Cog):
 
 	@commands.command(name='nice', help='Get a compliment')
 	async def nice(self, ctx):
-		mydb = self.bot.db
-		mycursor = mycursor = mydb.cursor()
+		#mydb = self.bot.db
+		#mycursor = mydb.cursor()
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
+		
 		author = ctx.message.author.display_name
 		count = 0
 		try:
@@ -98,7 +119,7 @@ class Compliments(commands.Cog):
 				await ctx.send('I\'m sorry, Master, my mind has gone blank in your presence.')
 		else:
 			await ctx.send('I\'m sorry, Master, I don\'t know what to say.')
-
+		mydb.disconnect()
 
 def setup(bot):
 	bot.add_cog(Compliments(bot))

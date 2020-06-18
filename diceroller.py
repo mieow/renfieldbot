@@ -33,7 +33,7 @@ class DiceRoller(commands.Cog):
 						str = str + "*{}* ".format(roll)
 					else:
 						str = str + "{} ".format(roll)
-				await ctx.send("Master, I have rolled these for you: " + str)
+				await ctx.send("Master {}, I have rolled these for you: ".format(author) + str)
 			except Exception as e:
 				print('Renfield is confused')
 				print(e)
