@@ -14,13 +14,31 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD = os.getenv('DISCORD_GUILD')
 DATABASE_USERNAME = os.getenv('DATABASE_USERNAME')
 DATABASE_PASSWORD = os.getenv('DATABASE_PASSWORD')
-DISCORDLOG = '/home/renfield/logs/discord.log'
+LOG_HOME = os.getenv('LOG_HOME')
+DISCORDLOG = LOG_HOME + '/discord.log'
 
-logger = logging.getLogger('discord')
-logger.setLevel(logging.WARNING)
-handler = logging.FileHandler(filename=DISCORDLOG, encoding='utf-8', mode='w')
-handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
-logger.addHandler(handler)
+# BUGS
+#
+# - messages should use current display name - is discord caching it?
+# - update character name in members table, as well as player name
+
+# WISH LIST
+#
+# - ST message Renfield privately and he says what they tell
+# - download chat log
+# - able to be added to other servers
+# - wordpress API link for access to character database
+# - play mp3 at specified intervals
+# - Settings
+# 		- Rename Renfield
+# - able to be used for different larps 
+
+
+# logger = logging.getLogger('discord')
+# logger.setLevel(logging.DEBUG)
+# handler = logging.FileHandler(filename=DISCORDLOG, encoding='utf-8', mode='w')
+# handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+# logger.addHandler(handler)
 
 
 description = 'GVLARP Renfield Bot'
@@ -29,7 +47,7 @@ bot.load_extension("niceness")
 bot.load_extension("events")
 bot.load_extension("diceroller")
 bot.load_extension("linears")
-#bot.load_extension("monitor")
+bot.load_extension("monitor")
 
 
 # Connect to Discord when ready
@@ -101,6 +119,33 @@ async def on_voice_state_update(member, before, after):
 				await outchannel.send("{} has left the {}".format(member.display_name, before.channel.name))
 			else:
 				await outchannel.send("{} has moved from the {} to the {}.".format(member.display_name, before.channel.name, after.channel.name))
+
+
+#LOOKUP LISTENERS
+# - ALSO AVAILABLE FOR COGS
+# @bot.event
+# async def on_message(message):
+	# if message.author == bot.user:
+		# return
+	# msgtst = message.content.lower()
+	# if "renfield" not in msgtst:
+		# return
+	# if "hello" in msgtst:
+		# await message.channel.send("Hello {}.".format(message.author.display_name))
+	# elif "help" in msgtst:
+		# await message.channel.send("{}, you can type '.help' for a list of commands or look at the GV Discord Webpage https://www.gvlarp.com/resources/discord.".format(message.author.display_name))
+	# elif "thanks" in msgtst:
+		# await message.channel.send("You are welcome, {}".format(message.author.display_name))
+	# elif "thankyou" in msgtst:
+		# await message.channel.send("You are welcome, {}".format(message.author.display_name))
+	# else:
+		# await message.channel.send("Can I help you, {}?".format(message.author.display_name))
+
+# # Logging
+# @bot.event
+# async def on_message(message):
+	# if message.author == bot.user:
+		# return
 	
 
 if __name__ == '__main__':

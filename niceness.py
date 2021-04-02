@@ -18,9 +18,10 @@ class Compliments(commands.Cog):
 		#mycursor = mydb.cursor()
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
+		server = ctx.message.guild.name
 		try:
-			sql = "INSERT INTO niceness (compliment) VALUES (%s)"
-			val = (compliment,)
+			sql = "INSERT INTO niceness (compliment, server) VALUES (%s, %s)"
+			val = (compliment, server)
 			mycursor.execute(sql, val)
 			mydb.commit()
 			await ctx.send('Thank you Master, I shall remember that.')
@@ -41,9 +42,13 @@ class Compliments(commands.Cog):
 		#mycursor = mydb.cursor()
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
+		server = ctx.message.guild.name
 		try:
-			sql = "SELECT * FROM niceness ORDER BY compliment"
-			mycursor.execute(sql)
+			sql = "SELECT id, compliment FROM niceness WHERE server = %s ORDER BY compliment"
+			val = (server,)
+			
+			mycursor.execute(sql, val)
+	
 			events = mycursor.fetchall()
 			headers = ['ID', 'Compliment']
 			rows = [[e[0], e[1]] for e in events]
@@ -60,6 +65,7 @@ class Compliments(commands.Cog):
 		except Exception as e:
 			await ctx.send("I'm sorry Master, I am unable to recall all the compliments.")
 			print(e)
+			print (mycursor.statement)
 		mydb.disconnect()
 
 	@commands.command(name='deletenice', help='Delete a compliments')
@@ -93,24 +99,28 @@ class Compliments(commands.Cog):
 		#mycursor = mydb.cursor()
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
-		
+		server = ctx.message.guild.name
 		author = ctx.message.author.display_name
 		count = 0
 		try:
-			sql = "select count(id) from niceness"
-			mycursor.execute(sql)
+			sql = "select count(id) from niceness where server = %s"
+			val = (server,)
+			mycursor.execute(sql, val)
 			countall = mycursor.fetchall()
 			count = countall[0][0]
 			#await ctx.send('I have {} good ones for you, Master.'.format(count))
 		except Exception as e:
 			print(e)
-			await ctx.send('I\'m sorry, Master {}, if you can\'t say anything nice then don\'t say anything at all.')
+			print(server)
+			print (mycursor.statement)
+			await ctx.send('I\'m sorry, if I can\'t say anything nice then I won\'t say anything at all.')
 
 		if count > 0:
 			# or get their member_id from the the table
 			try:
-				sql = "select compliment from niceness order by rand() limit 1"
-				mycursor.execute(sql)
+				sql = "select compliment from niceness where server = %s order by rand() limit 1"
+				val = (server,)
+				mycursor.execute(sql,val)
 				results = mycursor.fetchall()
 				compliment = results[0][0]
 				await ctx.send('Master {}. {}'.format(author, compliment))	

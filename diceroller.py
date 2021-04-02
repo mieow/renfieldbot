@@ -2,6 +2,9 @@ import random
 import discord
 from discord.ext import commands
 
+# SUCCESSES - BOLD
+# 10S - ITALIC
+
 
 class DiceRoller(commands.Cog):
 	def __init__(self, bot):
@@ -11,8 +14,8 @@ class DiceRoller(commands.Cog):
 	@commands.command(name='roll', help='Dice roller')
 	async def roll(self, ctx, dicepool: int):
 		author = ctx.message.author.display_name
-		if dicepool > 30:
-			await ctx.send('I\'m sorry, Master {}, I only have 30 dice in my dice bag.'.format(author))
+		if dicepool > 40:
+			await ctx.send('I\'m sorry, Master {}, I only have 40 dice in my dice bag.'.format(author))
 		elif dicepool <= 0:
 			await ctx.send('You are having a jest with me, Master {}, I cannot roll that number of dice.'.format(author))
 		else:

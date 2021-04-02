@@ -1,13 +1,17 @@
 import discord
 import mysql.connector
+import os
 from discord.ext import commands
 from tabulate import tabulate
+from dotenv import load_dotenv
+
+load_dotenv()
+LOG_HOME = os.getenv('LOG_HOME')
 
 
 class Monitor(commands.Cog):
 	def __init__(self, bot):
 		self.bot = bot
-		self._last_member = None
 
 	@commands.command(name='test', help='Test command')
 	async def test(self, ctx):
@@ -32,6 +36,38 @@ class Monitor(commands.Cog):
 			print(e)
 			await ctx.send('ERROR')	
 
+	# @commands.Cog.listener()
+	# async def on_message(self, message):
+		# if message.author == self.bot.user:
+			# return
+		# msgtst = message.content.lower()
+		# if "renfield" in msgtst:
+			# if "hello" in msgtst:
+				# await message.channel.send("Hello {}.".format(message.author.display_name))
+			# # elif "help" in msgtst:
+				# # await message.channel.send("{}, you can type '.help' for a list of commands or look at the GV Discord Webpage https://www.gvlarp.com/resources/discord.".format(message.author.display_name))
+			# # elif "thanks" in msgtst:
+				# # await message.channel.send("You are welcome, {}".format(message.author.display_name))
+			# # elif "thankyou" in msgtst:
+				# # await message.channel.send("You are welcome, {}".format(message.author.display_name))
+			# # else:
+				# # await message.channel.send("Can I help you, {}?".format(message.author.display_name))
+
+		# serverid  = message.guild.id
+		# channelid = message.channel.id
+		# logpath = LOG_HOME + "/{}/{}.log".format(serverid,channelid)
+		# ensure_dir(logpath)
+		# filesize = os.stat(logpath).st_size
+		# f = open(logpath, "a")
+		# f.write("{}: {}\n\n".format(message.author.display_name, message.content))
+		# f.close
+		# await message.channel.send("Log size {} bytes".format(filesize))
+
+
+def ensure_dir(file_path):
+    directory = os.path.dirname(file_path)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
 
 def setup(bot):
 	bot.add_cog(Monitor(bot))
