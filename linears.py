@@ -321,7 +321,7 @@ class Linears(commands.Cog):
 				rows=[]
 				turn = 1
 				curraction = mydb.get_linear_setting(botid, "CurrentAction", 1, server)
-				round = mydb.get_linear_setting(botid, "Round", 1)
+				round = mydb.get_linear_setting(botid, "Round", 1, server)
 				for action in order:
 					if curraction == turn:
 						marker = "<-- Next"
