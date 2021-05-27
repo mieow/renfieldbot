@@ -1,8 +1,9 @@
 import discord
 import mysql.connector
+import renfield_sql
 from discord.ext import commands
 from tabulate import tabulate
-import renfield_sql
+from common import check_is_auth
 
 
 class Compliments(commands.Cog):
@@ -12,7 +13,8 @@ class Compliments(commands.Cog):
 
 
 	@commands.command(name='addnice', help='Add a compliment')
-	@commands.has_role('storytellers')
+	#@commands.has_role('storytellers')
+	@check_is_auth()
 	async def addnice(self, ctx, *, compliment):
 		#mydb = self.bot.db
 		#mycursor = mydb.cursor()
@@ -36,7 +38,8 @@ class Compliments(commands.Cog):
 			await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
 
 	@commands.command(name='listnice', help='List all the compliments')
-	@commands.has_role('storytellers')
+	#@commands.has_role('storytellers')
+	@check_is_auth()
 	async def listnice(self, ctx):
 		#mydb = self.bot.db
 		#mycursor = mydb.cursor()
@@ -69,15 +72,17 @@ class Compliments(commands.Cog):
 		mydb.disconnect()
 
 	@commands.command(name='deletenice', help='Delete a compliments')
-	@commands.has_role('storytellers')
+	#@commands.has_role('storytellers')
+	@check_is_auth()
 	async def deletenice(self, ctx, ID: int):
 		#mydb = self.bot.db
 		#mycursor = mydb.cursor()
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
+		server = ctx.message.guild.name
 		try:
-			sql = "DELETE FROM `niceness` WHERE id = '%s'"
-			val = (ID,)
+			sql = "DELETE FROM `niceness` WHERE id = '%s' and server = %s"
+			val = (ID,server)
 			mycursor.execute(sql, val)
 			mydb.commit()
 			await ctx.send('I have forgotten that compliment, Master.')
@@ -95,41 +100,11 @@ class Compliments(commands.Cog):
 
 	@commands.command(name='nice', help='Get a compliment')
 	async def nice(self, ctx):
-		#mydb = self.bot.db
-		#mycursor = mydb.cursor()
 		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
 		server = ctx.message.guild.name
 		author = ctx.message.author.display_name
-		count = 0
-		try:
-			sql = "select count(id) from niceness where server = %s"
-			val = (server,)
-			mycursor.execute(sql, val)
-			countall = mycursor.fetchall()
-			count = countall[0][0]
-			#await ctx.send('I have {} good ones for you, Master.'.format(count))
-		except Exception as e:
-			print(e)
-			print(server)
-			print (mycursor.statement)
-			await ctx.send('I\'m sorry, if I can\'t say anything nice then I won\'t say anything at all.')
-
-		if count > 0:
-			# or get their member_id from the the table
-			try:
-				sql = "select compliment from niceness where server = %s order by rand() limit 1"
-				val = (server,)
-				mycursor.execute(sql,val)
-				results = mycursor.fetchall()
-				compliment = results[0][0]
-				await ctx.send('Master {}. {}'.format(author, compliment))	
-			except Exception as e:
-				print(e)
-				await ctx.send('I\'m sorry, Master, my mind has gone blank in your presence.')
-		else:
-			await ctx.send('I\'m sorry, Master, I don\'t know what to say.')
-		mydb.disconnect()
+		nice = mydb.get_nice(server)
+		await ctx.send("Master {}. {}".format(author,nice))
 
 def setup(bot):
 	bot.add_cog(Compliments(bot))

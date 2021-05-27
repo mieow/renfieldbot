@@ -117,3 +117,110 @@ class renfield_sql():
 			print(e)
 			ok = 0
 		return ok
+		
+	def save_bot_setting(self, setting_name, setting_value, server):
+		mycursor = self.connect()
+		ok = 1
+		
+		if setting_name == "":
+			return 0
+		
+		count = 0
+		try:
+			sql = "select count(id) from serversettings where setting_name = %s and server = %s"
+			val = ("{}".format(setting_name), server)
+			mycursor.execute(sql, val)
+			countall = mycursor.fetchall()
+			count = countall[0][0]
+		except Exception as e:
+			ok = 0
+			print('Count setting')
+			print(e)
+		
+		if not ok:
+			return 0
+			
+		if count == 0:
+			# insert
+			try:
+				sql = "INSERT INTO serversettings (setting_name, setting_value, server) VALUES (%s, %s, %s)"
+				val = (setting_name, setting_value, server)
+				mycursor.execute(sql, val)
+				self.commit()
+			except Exception as e:
+				ok = 0
+				print('insert failed')
+				print(e)
+		
+		else:
+			# update
+			try:
+				sql = "UPDATE serversettings SET setting_value = %s WHERE setting_name = %s and server = %s"				
+				val = (setting_value, setting_name, server)
+				mycursor.execute(sql, val)
+				self.commit()
+			except Exception as e:
+				ok = 0
+				print('update failed')
+				print(e)
+	
+		return ok
+
+	def get_bot_setting(self, setting_name, default_value, server):
+		mycursor = self.connect()
+		ok = 1
+		# get the current level of the setting
+		try:
+			sql = "select setting_value from serversettings where setting_name = %s and server = %s"
+			val = ("{}".format(setting_name), server)
+			mycursor.execute(sql, val)
+			settings = mycursor.fetchall()
+			if not settings:
+				current = default_value
+			else:
+				current = settings[0][0]
+		except Exception as e:
+			ok = 0
+			print(e)
+
+		if ok:
+			return current
+		else:
+			return default_value
+
+	def get_nice(self, server):
+		mycursor = self.connect()
+		count = 0
+		compliment = ""
+		
+		try:
+			sql = "select count(id) from niceness where server = %s"
+			val = (server,)
+			mycursor.execute(sql, val)
+			countall = mycursor.fetchall()
+			count = countall[0][0]
+			#await ctx.send('I have {} good ones for you, Master.'.format(count))
+		except Exception as e:
+			print(e)
+			print(server)
+			print (mycursor.statement)
+			compliment = 'I\'m sorry, if I can\'t say anything nice then I won\'t say anything at all.'
+
+		if count > 0:
+			# or get their member_id from the the table
+			try:
+				sql = "select compliment from niceness where server = %s order by rand() limit 1"
+				val = (server,)
+				mycursor.execute(sql,val)
+				results = mycursor.fetchall()
+				compliment = results[0][0]
+				compliment = '{}'.format(compliment)
+			except Exception as e:
+				print(e)
+				compliment = 'I\'m sorry, Master, my mind has gone blank in your presence.'
+		else:
+			compliment = 'I\'m sorry, Master, I don\'t know what to say.'
+		self.disconnect()
+		
+		return compliment
+	

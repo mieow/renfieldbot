@@ -5,6 +5,7 @@ import renfield_sql
 from datetime import date
 import re
 from tabulate import tabulate
+from common import check_is_auth
 
 class Linears(commands.Cog):
 	def __init__(self, bot):
@@ -25,22 +26,30 @@ class Linears(commands.Cog):
 		Optionally specify a unique name for the linear by adding a name after the .addlinear command.
 		
 		''')
-	@commands.has_role('storytellers')
+	#@commands.has_role('storytellers')
+	@check_is_auth()
 	async def addlinear(self, ctx, prefix: str='linear'):
 		server = ctx.message.guild
 		#await ctx.send("Create linear for {}".format(server.name))
 
 		# get the category for linears
-		name = "Linears"
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
+		name = mydb.get_bot_setting("linear_category", "Linears", server.name)
 		category = discord.utils.get(ctx.guild.categories, name=name)
+		# Check that the category was matched
+		# TO DO
 		#await ctx.send("Create linear in category {}".format(category.name))
+		
+		
+		max_linears = int(mydb.get_bot_setting("max_linears", 3, server.name))
 		
 		# set channel name based on the date
 		today = date.today()
 		d1 = today.strftime("%d-%b-%Y")
 		txtchannelname = "{}-{}".format(prefix, d1).lower()
 		voxchannelname = "voice-{}-{}".format(prefix, d1).lower()
-		#await ctx.send("Create linear with name {}".format(channelname))
+		#await ctx.send("Create linear channels with names {} and {} (max linears = {})".format(txtchannelname, voxchannelname, max_linears))
 		
 		# TEXT CHANNELS
 		# check if channel already exists
@@ -58,14 +67,14 @@ class Linears(commands.Cog):
 					mycount += 1
 			if found == 1:
 				await ctx.send("Channel {} already exists".format(txtchannelname))
-			if mycount >= 3:
+			if mycount >= max_linears:
 				await ctx.send("Too many text channels. Delete one first.".format(mycount,name))
 		except Exception as e:
 			await ctx.send('Error when validating channel creation')
 			print(e)
 
 		# create text channel
-		if not found and mycount < 3:
+		if not found and mycount < max_linears:
 			try:
 				await server.create_text_channel(txtchannelname, category=category)
 				await ctx.send("Created channel {}".format(txtchannelname))
@@ -89,14 +98,14 @@ class Linears(commands.Cog):
 					mycount += 1
 			if found == 1:
 				await ctx.send("Channel {} already exists".format(voxchannelname))
-			if mycount >= 3:
+			if mycount >= max_linears:
 				await ctx.send("Too many voice channels. Delete one first.".format(mycount,name))
 		except Exception as e:
 			await ctx.send('Error when validating channel creation')
 			print(e)
 		
 		# create text channel
-		if not found and mycount < 3:
+		if not found and mycount < max_linears:
 			try:
 				await server.create_voice_channel(voxchannelname, category=category)
 				await ctx.send("Created channel {}".format(voxchannelname))
@@ -127,7 +136,7 @@ class Linears(commands.Cog):
 			.set initiative 12
 			.set
 			
-		If you use the command by itself then Renfield will list all your current settings.
+		If you use the command by itself then the bot will list all your current settings.
 		''')
 	async def set(self, ctx, setting_name : str="display", setting_level : int=0):
 		author = ctx.message.author.display_name
@@ -271,7 +280,8 @@ class Linears(commands.Cog):
 	start\t: Start the combat - set round to 1
 	
 	Use the .next command to progress to the next in the initiative order.''')
-	@commands.has_role('storytellers')
+	#@commands.has_role('storytellers')
+	@check_is_auth()
 	async def combat(self, ctx, cmd: str = ""):
 		server = ctx.message.guild
 		author = ctx.message.author.display_name
@@ -401,7 +411,8 @@ class Linears(commands.Cog):
 	#
 	# "This is a new round. Please make your blood spends now."
 	@commands.command(name='next', help='Progress through initiative rounds')
-	@commands.has_role('storytellers')
+	#@commands.has_role('storytellers')
+	@check_is_auth()
 	async def next(self, ctx):
 		server = ctx.message.guild
 		author = ctx.message.author.display_name
