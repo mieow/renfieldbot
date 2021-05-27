@@ -5,6 +5,7 @@ import mysql.connector
 from datetime import date
 from datetime import datetime
 import renfield_sql
+from common import check_is_auth
 
 
 class Events(commands.Cog):
@@ -17,9 +18,15 @@ class Events(commands.Cog):
 	async def signin(self, ctx, *, player: str=""):
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
-		# TODO: update player name if given again
+
 		author = ctx.message.author.display_name
 		nameid = ctx.message.author.id
+		server = ctx.message.guild.name
+		
+		if player != "" and (author.lower() in player.lower() or player.lower() in author.lower()):
+			await ctx.send("Wow, Master. That's so weird that your Discord nickname '{}' and your player name '{}' are so similar!".format(author, player))	
+			
+		
 		# add them to the members table if they don't exist
 		count = 0
 		try:
@@ -36,7 +43,7 @@ class Events(commands.Cog):
 		member_id = 0
 		playername = ""
 		if count == 0 and player == "":
-			await ctx.send('I\'m sorry, Master, please let me know your Out Of Character name for the membership records')
+			await ctx.send('I\'m sorry, Master, please let me know your Player name for the membership records')
 		elif count == 0:
 			#Add to member table
 			try:
@@ -111,20 +118,25 @@ class Events(commands.Cog):
 
 
 				if signedin == 0:
+					textreply = ""
 					try:
 						sql = "INSERT INTO attendance (member_id, event_id, displayname) VALUES (%s, %s, %s)"
-						#await ctx.send(sql)
-						#await ctx.send(events)
 						val = (member_id, events[0][0], author)
 						mycursor.execute(sql, val)
 						mydb.commit()
-						await ctx.send('Thank you Master {}, I have recorded your attendance'.format(author))
+						signedin = 1
+						textreply = 'Thank you Master {}, I have recorded your attendance.'.format(author)
 					except Exception as e:
 						print(e)
-						await ctx.send('I\'m sorry, Master, I was unable to record your attendance.')
+						textreply = 'I\'m sorry, Master, I was unable to record your attendance.'
 				
+			
 				else:
-					await ctx.send("I see that you have already signed in to this event, Master.")
+					textreply = "I see that you have already signed in to this event, Master."
+
+				if signedin == 1:
+					nice = mydb.get_nice(server)
+					await ctx.send("{} I have to say... {}".format(textreply, nice))
 
 			elif isevent == -1:
 				await ctx.send('Error detected')
@@ -143,7 +155,8 @@ class Events(commands.Cog):
 
 
 	@commands.command(name='new', help='Schedule a new LARP event', usage='<name> dd/mm/yyyy [08:00pm]')
-	@commands.has_role('storytellers')
+	#@commands.has_role('storytellers')
+	@check_is_auth()
 	async def new(self, ctx, name: str, date: str, time: str='08:00pm'):
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
@@ -274,7 +287,8 @@ class Events(commands.Cog):
 
 
 	@commands.command(name='delete', help='Delete an event')
-	@commands.has_role('storytellers')
+	#@commands.has_role('storytellers')
+	@check_is_auth()
 	async def delete(self, ctx, name: str):
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
