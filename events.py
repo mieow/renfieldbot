@@ -6,22 +6,65 @@ from datetime import date
 from datetime import datetime
 import renfield_sql
 from common import check_is_auth
+from discord_slash import cog_ext, SlashContext
+from discord_slash.utils.manage_commands import create_option, create_choice
+from discord import Embed
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
 
 
 class Events(commands.Cog):
 	def __init__(self, bot):
 		self.bot = bot
 		self._last_member = None
+		
+	# @cog_ext.cog_slash(name="testit", description="Test slash command", guild_ids=[GUILDID],
+		# options=[
+			# create_option(
+				# name="player",
+				# description="Player name (no, not your character name. Your PLAYER name.",
+				# option_type=3,
+				# required=True
+			# )
+		# ])
+	# async def testit(self, ctx: SlashContext, player: str):
+		# embed = discord.Embed(title="embed test")
+		# print(ctx)
+		# author = ctx.author.display_name
+		# nameid = ctx.author.id
+		# server = ctx.guild.name
+		# await ctx.send(content="author: {}, nameid: {}, guild: {}".format(author, nameid, server), embeds=[embed])
 
+	# @cog_ext.cog_slash(name="test_global", description="Test global slash command")
+	# async def _test_global(self, ctx: SlashContext):
+		# embed = discord.Embed(title="embed test")
+		# await ctx.send(content="test", embeds=[embed])
+
+	# https://discord-py-slash-command.readthedocs.io/en/legacy/gettingstarted.html
 	
-	@commands.command(name='signin', help='Sign In to the event')
-	async def signin(self, ctx, *, player: str=""):
+	@cog_ext.cog_slash(name="signin", description="Sign in to an event", guild_ids=[GUILDID],
+		options=[
+			create_option(
+				name="player",
+				description="Player name (no, not your character name. Your PLAYER name.",
+				option_type=3,
+				required=False
+			)
+		])
+	#@commands.command(name='signin', help='Sign In to the event')
+	async def signin(self, ctx: SlashContext, player: str=""):
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
 
-		author = ctx.message.author.display_name
-		nameid = ctx.message.author.id
-		server = ctx.message.guild.name
+		author = ctx.author.display_name
+		nameid = ctx.author.id
+		server = ctx.guild.name
+		# author = ctx.message.author.display_name
+		# nameid = ctx.message.author.id
+		# server = ctx.message.guild.name
 		
 		if player != "" and (author.lower() in player.lower() or player.lower() in author.lower()):
 			await ctx.send("Wow, Master. That's so weird that your Discord nickname '{}' and your player name '{}' are so similar!".format(author, player))	
@@ -154,15 +197,43 @@ class Events(commands.Cog):
 			await ctx.send("I'm sorry Master, Who should I say is attending the event?")
 
 
-	@commands.command(name='new', help='Schedule a new LARP event', usage='<name> dd/mm/yyyy [08:00pm]')
+	@cog_ext.cog_slash(name="new", description="Add new event", guild_ids=[GUILDID],
+		options=[
+			create_option(
+				name="eventname",
+				description="Event Name",
+				option_type=3,
+				required=True
+			),
+			create_option(
+				name="date",
+				description="Date of event (dd/mm/yyyy)",
+				option_type=3,
+				required=True
+			),
+			create_option(
+				name="time",
+				description="Start time (e.g. 08:00pm)",
+				option_type=3,
+				required=False
+			)
+		])
+	#@commands.command(name='new', help='Schedule a new LARP event', usage='<name> dd/mm/yyyy [08:00pm]')
 	#@commands.has_role('storytellers')
-	@check_is_auth()
-	async def new(self, ctx, name: str, date: str, time: str='08:00pm'):
+	async def new(self, ctx, eventname: str, date: str, time: str='06:00pm'):
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
-		author = ctx.message.author.display_name
-		server = ctx.message.guild.name
+		author = ctx.author.display_name
+		server = ctx.guild.name
 		date_time = '{} {}'.format(date, time)
+		
+		# Check if user is allowed to use this command
+		admin_role = mydb.get_bot_setting("admin_role", "storytellers", server)
+		has_admin_role = (admin_role.lower() in [y.name.lower() for y in ctx.author.roles])
+		if not (ctx.author.guild_permissions.administrator or has_admin_role):
+			await ctx.send('I\'m sorry, Master, you do not have the authority to ask me to do that')
+			return
+		
 		# add to database
 		dateok = 0
 		try:
@@ -179,9 +250,10 @@ class Events(commands.Cog):
 			dateok = 0
 		
 		# check event doesn't already exist
+		mycursor = mydb.connect()
 		isduplicate = 1
 		try:
-			sql = "SELECT COUNT(id) FROM events WHERE name = '{}'".format(name)
+			sql = "SELECT COUNT(id) FROM events WHERE name = '{}'".format(eventname)
 			mycursor.execute(sql)
 			out = mycursor.fetchall()
 			isduplicate = out[0][0]
@@ -195,10 +267,10 @@ class Events(commands.Cog):
 		if dateok and isduplicate == 0:
 			try:
 				sql = "INSERT INTO events (name, server, eventdate) VALUES (%s, %s, %s)"
-				val = (name, server, event_date)
+				val = (eventname, server, event_date)
 				mycursor.execute(sql, val)
 				mydb.commit()
-				await ctx.send('Thank you Master {}, I have recorded the {} event in the diary for {}'.format(author, name, event_date))
+				await ctx.send('Thank you Master {}, I have recorded the {} event in the diary for {}'.format(author, eventname, event_date))
 			except Exception as e:
 				await ctx.send('I\'m sorry, Master, I could not complete your command')
 				print(e)
@@ -209,8 +281,37 @@ class Events(commands.Cog):
 			await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
 
 
-	@commands.command(name='list', usage='[all | next | <event>]', brief='list game events and attendance', help='list game events and attendance.\n\nall\t: all events and attendance\nnext\t: next event\n<name>\t: list of attendees')
-	async def list(self, ctx, *, action: str='next'):
+	@cog_ext.cog_slash(name="list", description="Display event information", guild_ids=[GUILDID],
+		options=[
+			create_option(
+				name="action",
+				description="Specify what event information to show",
+				option_type=3,
+				required=False,
+				choices=[
+					create_choice(
+						name="List all events",
+						value="all"
+					),
+					create_choice(
+						name="Show next event (default)",
+						value="next"
+					),
+					create_choice(
+						name="Show attendance list of a specific event",
+						value="one"
+					)
+				]
+			),
+			create_option(
+				name="event",
+				description="Specify event name",
+				option_type=3,
+				required=False
+			)
+		])
+	# @commands.command(name='list', usage='[all | next | <event>]', brief='list game events and attendance', help='list game events and attendance.\n\nall\t: all events and attendance\nnext\t: next event\n<name>\t: list of attendees')
+	async def list(self, ctx, action: str='next', event: str=''):
 		'''Displays the list of current events
 			example: .list
 		'''
@@ -220,8 +321,9 @@ class Events(commands.Cog):
 		# list <event> - list who attended the event (ST Only)
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
-		author = ctx.message.author.display_name
-		guild = ctx.message.guild.name
+		author = ctx.author.display_name
+		nameid = ctx.author.id
+		guild = ctx.guild.name
 		datetoday = date.today()
 		try:
 			if action == 'all':
@@ -253,7 +355,7 @@ class Events(commands.Cog):
 						attendance, events
 					WHERE
 						attendance.event_id = events.id
-						AND events.name = '{}'""".format(action)
+						AND events.name = '{}'""".format(event)
 				mycursor.execute(sql)
 				countall = mycursor.fetchall()
 				count = countall[0][0]
@@ -270,30 +372,49 @@ class Events(commands.Cog):
 							AND events.name = '{}'
 							AND events.id = attendance.event_id
 							AND members.member_id = attendance.member_id
-						ORDER BY attendance.displayname""".format(guild, action)
+						ORDER BY attendance.displayname""".format(guild, event)
 					#await ctx.send(sql)
 					mycursor.execute(sql)
 					events = mycursor.fetchall()
 					headers = ['Character', 'Player']
 					rows = [[e[0], e[1]] for e in events]
 					table = tabulate(rows, headers)
-					await ctx.send('```Attendance for the ' + action + ' event on the {}:\n\n'.format(events[0][2]) + table + '```')
+					await ctx.send('```Attendance for the ' + event + ' event on the {}:\n\n'.format(events[0][2]) + table + '```')
 				else:
-					await ctx.send('```Attendance for the ' + action + ' event:\n\nNo attendees```')
+					await ctx.send('```Attendance for the ' + event + ' event:\n\nNo attendees```')
 		except Exception as e:
 			await ctx.send("I'm sorry Master, I am unable to provide the event details you requested")
 			print(e)
 		mydb.disconnect()
 
 
-	@commands.command(name='delete', help='Delete an event')
+	#@commands.command(name='delete', help='Delete an event')
 	#@commands.has_role('storytellers')
-	@check_is_auth()
+	#@check_is_auth()
+	@cog_ext.cog_slash(name="delete", description="Delete event", guild_ids=[GUILDID],
+		options=[
+			create_option(
+				name="name",
+				description="Event Name",
+				option_type=3,
+				required=True
+			)
+		])
 	async def delete(self, ctx, name: str):
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
-		author = ctx.message.author.display_name
-		guild = ctx.message.guild.name
+		author = ctx.author.display_name
+		guild = ctx.guild.name
+		
+		# Check if user is allowed to use this command
+		admin_role = mydb.get_bot_setting("admin_role", "storytellers", guild)
+		has_admin_role = (admin_role.lower() in [y.name.lower() for y in ctx.author.roles])
+		if not (ctx.author.guild_permissions.administrator or has_admin_role):
+			await ctx.send('I\'m sorry, Master, you do not have the authority to ask me to do that')
+			return
+
+		mycursor = mydb.connect()
+		
 		# check if event exists before trying to delete it
 		event_id = 0
 		try:

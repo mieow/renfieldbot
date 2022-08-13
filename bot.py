@@ -8,10 +8,12 @@ import logging
 
 from dotenv import load_dotenv
 from discord.ext import commands
+from discord_slash import SlashCommand, SlashContext
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD = os.getenv('DISCORD_GUILD')
+GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
 DATABASE_USERNAME = os.getenv('DATABASE_USERNAME')
 DATABASE_PASSWORD = os.getenv('DATABASE_PASSWORD')
 LOG_HOME = os.getenv('LOG_HOME')
@@ -19,7 +21,6 @@ DISCORDLOG = LOG_HOME + '/discord.log'
 
 # BUGS
 #
-# X messages should use current display name - is discord caching it?
 # - update character name in members table, as well as player name
 
 # WISH LIST
@@ -30,9 +31,9 @@ DISCORDLOG = LOG_HOME + '/discord.log'
 #		- check category exists before trying to create a linear in it
 #		- niceness - ensure ppl can only delete lines for their server
 # - ST message Renfield privately and he says what they tell
-# X give compliment when you say hello
+# - send messages to other characters
+#		- need to be able to ignore, and specify if delivery receipt allowed
 # - sign in when you say hello and an event is on
-# X remove .hello
 # - Settings
 #		X set storyteller role (admin_role)
 #		X set Linears category (linear_category)
@@ -50,6 +51,8 @@ DISCORDLOG = LOG_HOME + '/discord.log'
 #		- list all channels in server that have logs
 # - wordpress API link for access to character database
 # - play mp3 at specified intervals
+# - reminder/reference: page nos, pools, diff, - player contributed
+# - track damage taken
 #
 # send PM: await ctx.author.send('boop!')
 # get PM:
@@ -70,9 +73,14 @@ DISCORDLOG = LOG_HOME + '/discord.log'
 # handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
 # logger.addHandler(handler)
 
+intents = discord.Intents.default()
+intents.members = True
 
 description = 'GVLARP Renfield Bot'
-bot = commands.Bot(command_prefix='.', description=description)
+bot = commands.Bot(command_prefix='.', description=description, intents=intents)
+
+slash = SlashCommand(bot, sync_commands=True, sync_on_cog_reload=True)
+
 bot.load_extension("niceness")
 bot.load_extension("events")
 bot.load_extension("diceroller")
@@ -90,15 +98,19 @@ async def on_ready():
 	print('Renfield is at your service!')
 	print('Running with discord.py version: ' + discord.__version__)
 
-# # Ping the bot
-# @bot.command(name='hello', help='Is the bot listening?')
-# async def ping(ctx):
-	# '''Check that Renfield is listening'''
-	# author = ctx.message.author.display_name
-	# #server = ctx.message.guild.name
-	# await ctx.send('Yes, Master {}, I am at your command!'.format(author))
+# Ping the bot
+@bot.command(name='hello', help='Is the bot listening?')
+async def ping(ctx):
+	'''Check that Renfield is listening'''
+	author = ctx.message.author.display_name
+	#server = ctx.message.guild.name
+	await ctx.send('Yes, Master {}, I am at your command! This is the "{}" guild server with ID "{}")'.format(author,ctx.message.guild.name,ctx.message.guild.id))
  
 
+# @slash.slash(name="test", description="bot test", guild_ids=[GUILDID])
+# async def test(ctx: SlashContext):
+	# print("test")
+	# await ctx.send(content="test command, registered to {}".format(GUILDID))
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -220,6 +232,7 @@ if __name__ == '__main__':
 #     renfield> python3 -m pip install --upgrade mysql-connector-python
 #     renfield> python3 -m pip install --upgrade tabulate
 #     renfield> python3 -m pip install --upgrade python-dotenv
+#     renfield> python3 -m pip install --upgrade discord-py-interactions
 #     renfield> python3 -m pip install --upgrade <module>
 
 # set up directory structure
