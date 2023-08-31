@@ -45,7 +45,7 @@ class Events(commands.Cog):
 
 	# https://discord-py-slash-command.readthedocs.io/en/legacy/gettingstarted.html
 	
-	@cog_ext.cog_slash(name="signin", description="Sign in to an event", guild_ids=[GUILDID],
+	@cog_ext.cog_slash(name="signin", description="Sign in to an event",
 		options=[
 			create_option(
 				name="player",
@@ -57,7 +57,6 @@ class Events(commands.Cog):
 	#@commands.command(name='signin', help='Sign In to the event')
 	async def signin(self, ctx: SlashContext, player: str=""):
 		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
 
 		author = ctx.author.display_name
 		nameid = ctx.author.id
@@ -65,69 +64,17 @@ class Events(commands.Cog):
 		# author = ctx.message.author.display_name
 		# nameid = ctx.message.author.id
 		# server = ctx.message.guild.name
-		
+				
 		if player != "" and (author.lower() in player.lower() or player.lower() in author.lower()):
 			await ctx.send("Wow, Master. That's so weird that your Discord nickname '{}' and your player name '{}' are so similar!".format(author, player))	
-			
 		
-		# add them to the members table if they don't exist
-		count = 0
-		try:
-			sql = "select count(member_id) from members where name = %s"
-			val = ("{}".format(nameid), )
-			mycursor.execute(sql, val)
-			countall = mycursor.fetchall()
-			count = countall[0][0]
-			#await ctx.send('Congratulations Master. I checked for your code name {} on the members list.'.format(nameid))
-		except Exception as e:
-			print(e)
-			await ctx.send('I\'m sorry, Master {}, I was unable to check your name on the member list.'.format(nameid))	
-		
-		member_id = 0
-		playername = ""
-		if count == 0 and player == "":
-			await ctx.send('I\'m sorry, Master, please let me know your Player name for the membership records')
-		elif count == 0:
-			#Add to member table
-			try:
-				sql = "INSERT INTO members (name, playername, wordpress_id) VALUES (%s, %s, %s)"
-				val = (nameid, player, "")
-				mycursor.execute(sql, val)
-				mydb.commit()
-				member_id = mycursor.lastrowid
-				playername = player
-				#await ctx.send('Thank you, Master. I have added your name to the members list.')
-			except Exception as e:
-				print(e)
-				await ctx.send('I\'m sorry, Master, I was unable to add your name to the member list.')
+		memberinfo = mydb.add_member(nameid, player, server)
+		member_id = memberinfo["member_id"]
+		if memberinfo["message"] != "":
+			await ctx.send(memberinfo["message"])
 
-		else:
-
-			# or get their member_id from the the table
-			try:
-				sql = "select member_id, playername from members where name = %s"
-				val = ("{}".format(nameid), )
-				mycursor.execute(sql, val)
-				member_ids = mycursor.fetchall()
-				member_id = member_ids[0][0]
-				playername = member_ids[0][1]
-				#await ctx.send('Thank you, Master. I have confirmed that you are a member with membership number {}.'.format(member_id))	
-			except Exception as e:
-				print(e)
-				await ctx.send('I\'m sorry, Master, I was unable to find your membership number.')
-
+		mycursor = mydb.connect()
 		if member_id > 0:
-		
-			if playername != player and player != "":
-				try:
-					sql = "UPDATE members SET playername = %s WHERE member_id = %s"				
-					val = (player, member_id)
-					mycursor.execute(sql, val)
-					mydb.commit()
-					await ctx.send('I had you listed here as {} but I suppose you can call yourself {} if you want, instead.'.format(playername, player))	
-				except Exception as e:
-					print(e)
-					await ctx.send('I\'m sorry, Master, I was unable to update your membership number.')
 			
 			# Is there an event today and has it started?
 			isevent = 0
@@ -150,7 +97,7 @@ class Events(commands.Cog):
 				# Have you already signed in?
 				signedin = 0
 				try:
-					sql = "select count(member_id) from attendance, events where events.id = attendance.event_id and attendance.member_id = %s and events.id = '%s'"
+					sql = "select count(member_id) from attendance, events where events.id = attendance.event_id and attendance.member_id = %s and events.id = %s"
 					val = (member_id, eventid)
 					mycursor.execute(sql, val)
 					out = mycursor.fetchall()
@@ -197,7 +144,7 @@ class Events(commands.Cog):
 			await ctx.send("I'm sorry Master, Who should I say is attending the event?")
 
 
-	@cog_ext.cog_slash(name="new", description="Add new event", guild_ids=[GUILDID],
+	@cog_ext.cog_slash(name="new", description="Add new event",
 		options=[
 			create_option(
 				name="eventname",
@@ -243,37 +190,38 @@ class Events(commands.Cog):
 			await ctx.send('I\'m sorry, Master, the format of the date and optional time is DD/MM/YYYY [08:00pm]')
 			print(e)
 		
-		# check that event is not in the past
-		present = datetime.now()
-		if event_date.date() < present.date():
-			await ctx.send('I\'m sorry, Master, event date you have specified is in the past.')
-			dateok = 0
-		
-		# check event doesn't already exist
-		mycursor = mydb.connect()
-		isduplicate = 1
-		try:
-			sql = "SELECT COUNT(id) FROM events WHERE name = '{}'".format(eventname)
-			mycursor.execute(sql)
-			out = mycursor.fetchall()
-			isduplicate = out[0][0]
-		except Exception as e:
-			await ctx.send('I\'m sorry, Master, I could not check if an event already exists with this name.')
-			print(e)
-		
-		if isduplicate:
-			await ctx.send('I\'m sorry, Master, I already have an event with this name.')
-		
-		if dateok and isduplicate == 0:
+		if dateok:
+			# check that event is not in the past
+			present = datetime.now()
+			if event_date.date() < present.date():
+				await ctx.send('I\'m sorry, Master, event date you have specified is in the past.')
+				dateok = 0
+			
+			# check event doesn't already exist
+			mycursor = mydb.connect()
+			isduplicate = 1
 			try:
-				sql = "INSERT INTO events (name, server, eventdate) VALUES (%s, %s, %s)"
-				val = (eventname, server, event_date)
-				mycursor.execute(sql, val)
-				mydb.commit()
-				await ctx.send('Thank you Master {}, I have recorded the {} event in the diary for {}'.format(author, eventname, event_date))
+				sql = "SELECT COUNT(id) FROM events WHERE name = %s"
+				mycursor.execute(sql, (eventname,))
+				out = mycursor.fetchall()
+				isduplicate = out[0][0]
 			except Exception as e:
-				await ctx.send('I\'m sorry, Master, I could not complete your command')
+				await ctx.send('I\'m sorry, Master, I could not check if an event already exists with this name.')
 				print(e)
+			
+			if isduplicate:
+				await ctx.send('I\'m sorry, Master, I already have an event with this name.')
+			
+			if dateok and isduplicate == 0:
+				try:
+					sql = "INSERT INTO events (name, server, eventdate) VALUES (%s, %s, %s)"
+					val = (mydb.escape_string(eventname), mydb.escape_string(server), event_date)
+					mycursor.execute(sql, val)
+					mydb.commit()
+					await ctx.send('Thank you Master {}, I have recorded the {} event in the diary for {}'.format(author, eventname, event_date))
+				except Exception as e:
+					await ctx.send('I\'m sorry, Master, I could not complete your command')
+					print(e)
 		mydb.disconnect()
 
 	async def cog_command_error(self, ctx, error):
@@ -281,7 +229,7 @@ class Events(commands.Cog):
 			await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
 
 
-	@cog_ext.cog_slash(name="list", description="Display event information", guild_ids=[GUILDID],
+	@cog_ext.cog_slash(name="list", description="Display event information",
 		options=[
 			create_option(
 				name="action",
@@ -332,10 +280,10 @@ class Events(commands.Cog):
 					FROM events
 							LEFT JOIN attendance
 							ON attendance.event_id = events.id
-					WHERE server = '{}'
+					WHERE server = %s
 					GROUP BY events.id
-					ORDER BY eventdate""".format(guild)
-				mycursor.execute(sql)
+					ORDER BY eventdate"""
+				mycursor.execute((sql), (guild,))
 				events = mycursor.fetchall()
 				headers = ['Name', 'Date', 'Attendance']
 				rows = [[e[0], e[1], e[2]] for e in events]
@@ -344,8 +292,8 @@ class Events(commands.Cog):
 			elif action == 'next':
 				# list next event
 				headers = ['Name', 'Date']
-				sql = "SELECT * FROM events WHERE server = '{}' AND now() < eventdate ORDER BY eventdate LIMIT 1".format(guild)
-				mycursor.execute(sql)
+				sql = "SELECT * FROM events WHERE server = %s AND now() < eventdate ORDER BY eventdate LIMIT 1"
+				mycursor.execute((sql), (guild,))
 				events = mycursor.fetchall()
 				await ctx.send("Master {}, the next event is {} and it takes place on the {}".format(author, events[0][1], events[0][3]))
 			else:
@@ -355,8 +303,8 @@ class Events(commands.Cog):
 						attendance, events
 					WHERE
 						attendance.event_id = events.id
-						AND events.name = '{}'""".format(event)
-				mycursor.execute(sql)
+						AND events.name = %s"""
+				mycursor.execute((sql), (event,))
 				countall = mycursor.fetchall()
 				count = countall[0][0]
 				
@@ -368,13 +316,13 @@ class Events(commands.Cog):
 							attendance,
 							members
 						WHERE 
-							events.server = '{}'
-							AND events.name = '{}'
+							events.server = %s
+							AND events.name = %s
 							AND events.id = attendance.event_id
 							AND members.member_id = attendance.member_id
-						ORDER BY attendance.displayname""".format(guild, event)
+						ORDER BY attendance.displayname"""
 					#await ctx.send(sql)
-					mycursor.execute(sql)
+					mycursor.execute((sql), (guild, event))
 					events = mycursor.fetchall()
 					headers = ['Character', 'Player']
 					rows = [[e[0], e[1]] for e in events]
@@ -391,7 +339,7 @@ class Events(commands.Cog):
 	#@commands.command(name='delete', help='Delete an event')
 	#@commands.has_role('storytellers')
 	#@check_is_auth()
-	@cog_ext.cog_slash(name="delete", description="Delete event", guild_ids=[GUILDID],
+	@cog_ext.cog_slash(name="delete", description="Delete event",
 		options=[
 			create_option(
 				name="name",
@@ -405,6 +353,7 @@ class Events(commands.Cog):
 		mycursor = mydb.connect()
 		author = ctx.author.display_name
 		guild = ctx.guild.name
+		nameid = ctx.author.id
 		
 		# Check if user is allowed to use this command
 		admin_role = mydb.get_bot_setting("admin_role", "storytellers", guild)
@@ -418,8 +367,8 @@ class Events(commands.Cog):
 		# check if event exists before trying to delete it
 		event_id = 0
 		try:
-			sql = "select id from events where name = '{}'".format(name)
-			mycursor.execute(sql)
+			sql = "select id from events where name = %s"
+			mycursor.execute(sql,(name,))
 			events = mycursor.fetchall()
 			event_id = events[0][0]
 			#await ctx.send('I have found events ID {} with that name.'.format(event_id))

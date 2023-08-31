@@ -5,10 +5,12 @@ import mysql.connector
 import discord
 import renfield_sql
 import logging
+import wordpress_api
 
 from dotenv import load_dotenv
 from discord.ext import commands
-from discord_slash import SlashCommand, SlashContext
+from discord_slash import cog_ext, SlashCommand, SlashContext
+from common import write_key
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -84,9 +86,8 @@ slash = SlashCommand(bot, sync_commands=True, sync_on_cog_reload=True)
 bot.load_extension("niceness")
 bot.load_extension("events")
 bot.load_extension("diceroller")
-bot.load_extension("linears")
-bot.load_extension("monitor")
 bot.load_extension("settings")
+bot.load_extension("wordpress_api")
 
 
 # Connect to Discord when ready
@@ -97,72 +98,35 @@ async def on_ready():
 	print('---------------')
 	print('Renfield is at your service!')
 	print('Running with discord.py version: ' + discord.__version__)
+	# create encryption key, if needed
+	print('Encrypyion Key Generation: ' + write_key())
 
 # Ping the bot
-@bot.command(name='hello', help='Is the bot listening?')
-async def ping(ctx):
+@slash.slash(name="hello", description="Get status of Renfield", guild_ids=[GUILDID,1144585195316584488])
+async def _hello(ctx):
 	'''Check that Renfield is listening'''
-	author = ctx.message.author.display_name
-	#server = ctx.message.guild.name
-	await ctx.send('Yes, Master {}, I am at your command! This is the "{}" guild server with ID "{}")'.format(author,ctx.message.guild.name,ctx.message.guild.id))
+	author = ctx.author.display_name
+	nameid = ctx.author.id
+	server = ctx.guild.name
+	mydb = renfield_sql.renfield_sql()
+	wordpress_site = mydb.get_bot_setting("wordpress_site", "none", server)
+	
+	message = 'Yes, Master {}, I am at your command! This is the "{}" guild server.'.format(author,server)
+	
+	if wordpress_site != "none":
+		if wordpress_api.curl_checkAPI(server):
+			message = message + " I have failed to connect to the {} Wordpress site".format(wordpress_site)
+		else:
+			message = message + " I have successfully conencted to the Wordpress site."
+		
+	await ctx.send(message)
  
-
-# @slash.slash(name="test", description="bot test", guild_ids=[GUILDID])
-# async def test(ctx: SlashContext):
-	# print("test")
-	# await ctx.send(content="test command, registered to {}".format(GUILDID))
 
 @bot.event
 async def on_command_error(ctx, error):
 	if isinstance(error, commands.CommandNotFound):
-		await ctx.send("I'm sorry Master, I do not know that command. Say '.help' to find out what I can understand.")
+		await ctx.send("I'm sorry Master, I do not know that command.")
 
-# Event
-# discord.on_voice_state_update(member, before, after)
-# VoiceState -> channel -> VoiceChannel
-# check if before <> after
-# then output to tannoy (with notification?)
-@bot.event
-async def on_voice_state_update(member, before, after):
-	server = member.guild
-	for outchannel in server.channels:
-		if outchannel.name == "renfields-cubby-hole":
-			categoryid = outchannel.category_id
-			break
-			
-	# for outchannel in server.channels:
-		# if outchannel.name == "jane-testing":
-			# break
-			
-	aftername = ""
-	afterid = 0
-	beforename = ""
-	beforeid = 0
-	if after.channel is not None:
-		aftername = after.channel.name
-		afterid = after.channel.category_id
-	if before.channel is not None:
-		beforename = before.channel.name
-		beforeid = before.channel.category_id
-			
-	quiet = 0
-	if "quiet" in [y.name.lower() for y in member.roles]:
-		quiet = 1
-	if aftername == "Voice: Storytellers Only":
-		quiet = 1
-	if beforename == "Voice: Storytellers Only":
-		quiet = 1
-	if beforeid != categoryid and afterid != categoryid:
-		quiet = 1
-		
-	if not quiet:
-		if aftername != beforename:
-			if beforename == "":
-				await outchannel.send("{} has entered the {}".format(member.display_name, after.channel.name))
-			elif aftername == "":
-				await outchannel.send("{} has left the {}".format(member.display_name, before.channel.name))
-			else:
-				await outchannel.send("{} has moved from the {} to the {}.".format(member.display_name, before.channel.name, after.channel.name))
 
 
 # # Logging
@@ -194,12 +158,21 @@ if __name__ == '__main__':
 # EC2 -> Elastic IPs
 # - [Allocate Elastic IP address]
 
+# create an IAM role with polly access
+
 # Log on with SSH to instance as ec2-user, with key pair
 #     ec2-user> sudo -i
 
+# Install extra OS Packages
+#	  root> yum install libcurl-devel
+#	  root> yum install gcc
+#	  root> yum install -y openssl-devel
+#	  root> yum install python3-devel
+
 # Update OS packages
 #     root> yum update
-#
+
+# Install ffmpeg
 
 # Add renfield user
 #     root> adduser renfield
@@ -233,7 +206,11 @@ if __name__ == '__main__':
 #     renfield> python3 -m pip install --upgrade tabulate
 #     renfield> python3 -m pip install --upgrade python-dotenv
 #     renfield> python3 -m pip install --upgrade discord-py-interactions
+#     renfield> python3 -m pip install --upgrade pycurl
+#     renfield> python3 -m pip install --upgrade certifi
 #     renfield> python3 -m pip install --upgrade <module>
+#     renfield> pip install cryptography
+# pip install boto3
 
 # set up directory structure
 # upload python files
@@ -243,3 +220,11 @@ if __name__ == '__main__':
 #   mysql  -u root -p discordbot < dump.sql
 # set up bot as a service
 # https://pythondiscord.com/pages/guides/python-guides/discordpy/
+
+
+# Set AWS Polly
+# https://docs.aws.amazon.com/polly/latest/dg/get-started-what-next.html
+# https://boto3.amazonaws.com/v1/documentation/api/latest/guide/quickstart.html
+
+# Invite the bot to your server: https://discord.com/api/oauth2/authorize?client_id=690906493742088242&permissions=1099511630848&scope=bot%20applications.commands
+# add manage roles

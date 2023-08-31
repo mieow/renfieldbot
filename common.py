@@ -1,7 +1,9 @@
 import renfield_sql
+import os
 from discord.ext import commands
+from cryptography.fernet import Fernet
 
-#class common():
+#https://www.geeksforgeeks.org/how-to-encrypt-and-decrypt-strings-in-python/
 
 def check_is_auth():
 	def predicate(ctx):
@@ -32,3 +34,32 @@ def check_is_auth():
 # }
 #def parse_message(???):
 	# copy in code from monitor to work out source - i.e. who is sending msg
+	
+# function to create & write encryption key
+def write_key():
+	if os.path.isfile("/home/renfield/.wp_key"):
+		return "Key exists"
+	else:
+		key = Fernet.generate_key()
+		with open("/home/renfield/.wp_key", "wb") as key_file:
+			key_file.write(key)
+		return "New key generated"
+ 
+# function to read encryption key
+def load_key():
+	"""
+	Loads the key named `secret.key` from the current directory.
+	"""
+	return open("/home/renfield/.wp_key", "rb").read()
+	
+# function to encode string
+def str_encode(message):
+	key = load_key()
+	fernet = Fernet(key)
+	return fernet.encrypt(message.encode())
+
+# function to decode string
+def str_decode(encMessage):
+	key = load_key()
+	fernet = Fernet(key)
+	return fernet.decrypt(encMessage).decode()
