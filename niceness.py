@@ -4,6 +4,7 @@ import renfield_sql
 from discord.ext import commands
 from tabulate import tabulate
 from common import check_is_auth
+from discord import app_commands
 
 
 class Compliments(commands.Cog):
@@ -12,23 +13,22 @@ class Compliments(commands.Cog):
 		self._last_member = None
 
 
-	@commands.command(name='addnice', help='Add a compliment')
-	#@commands.has_role('storytellers')
+	@app_commands.command(name='addnice', description='Add a compliment')
+	@app_commands.describe(compliment="Text of compliment to add")
 	@check_is_auth()
-	async def addnice(self, ctx, *, compliment):
-		#mydb = self.bot.db
-		#mycursor = mydb.cursor()
+	async def addnice(self, ctx, *, compliment: str):
+
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
-		server = ctx.message.guild.name
+		server = ctx.guild.name
 		try:
 			sql = "INSERT INTO niceness (compliment, server) VALUES (%s, %s)"
 			val = (compliment, server)
 			mycursor.execute(sql, val)
 			mydb.commit()
-			await ctx.send('Thank you Master, I shall remember that.')
+			await ctx.response.send_message('Thank you Master, I shall remember that.')
 		except Exception as e:
-			await ctx.send('I\'m sorry, Master, my memory is failing me.')
+			await ctx.response.send_message('I\'m sorry, Master, my memory is failing me.')
 			print(e)
 		mydb.disconnect()
 
@@ -37,15 +37,16 @@ class Compliments(commands.Cog):
 		if isinstance(error, commands.MissingRequiredArgument):
 			await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
 
-	@commands.command(name='listnice', help='List all the compliments')
-	#@commands.has_role('storytellers')
+	@app_commands.command(name='listnice', description='List all the compliments')
 	@check_is_auth()
 	async def listnice(self, ctx):
-		#mydb = self.bot.db
-		#mycursor = mydb.cursor()
-		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
-		server = ctx.message.guild.name
+		try:
+			mydb = renfield_sql.renfield_sql()
+			mycursor = mydb.connect()
+			server = ctx.guild.name
+		except Exception as e:
+			await ctx.response.send_message("I'm sorry Master, something went wrong.")
+			print(e)
 		try:
 			sql = "SELECT id, compliment FROM niceness WHERE server = %s ORDER BY compliment"
 			val = (server,)
@@ -62,49 +63,49 @@ class Compliments(commands.Cog):
 			f.close()
 			
 			with open('/tmp/nice.txt', 'rb') as fp:
-				await ctx.send(file=discord.File(fp, 'nice.txt'))
+				await ctx.response.send_message(file=discord.File(fp, 'nice.txt'))
 			
 			#await ctx.send('```\n' + table + '```')
 		except Exception as e:
-			await ctx.send("I'm sorry Master, I am unable to recall all the compliments.")
+			await ctx.response.send_message("I'm sorry Master, I am unable to recall all the compliments.")
 			print(e)
 			print (mycursor.statement)
 		mydb.disconnect()
 
-	@commands.command(name='deletenice', help='Delete a compliments')
-	#@commands.has_role('storytellers')
+	@app_commands.command(name='deletenice', description='Delete a compliments')
+	@app_commands.describe(id="Compliment ID")
 	@check_is_auth()
-	async def deletenice(self, ctx, ID: int):
+	async def deletenice(self, ctx, id: int):
 		#mydb = self.bot.db
 		#mycursor = mydb.cursor()
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
-		server = ctx.message.guild.name
+		server = ctx.guild.name
 		try:
 			sql = "DELETE FROM `niceness` WHERE id = '%s' and server = %s"
-			val = (ID,server)
+			val = (id,server)
 			mycursor.execute(sql, val)
 			mydb.commit()
-			await ctx.send('I have forgotten that compliment, Master.')
+			await ctx.response.send_message('I have forgotten that compliment, Master.')
 		except Exception as e:
-			await ctx.send("I'm sorry Master, I cannot forget that compliment.")
+			await ctx.response.send_message("I'm sorry Master, I cannot forget that compliment.")
 			print(e)
 		mydb.disconnect()
 
 
-	@deletenice.error
-	async def deletenice_error(ctx, error):
-		if isinstance(error, commands.MissingRequiredArgument):
-			await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
+	# @deletenice.error
+	# async def deletenice_error(ctx, error):
+		# if isinstance(error, commands.MissingRequiredArgument):
+			# await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
 
 
-	@commands.command(name='nice', help='Get a compliment')
+	@app_commands.command(name='nice', description='Get a compliment')
 	async def nice(self, ctx):
 		mydb = renfield_sql.renfield_sql()
-		server = ctx.message.guild.name
-		author = ctx.message.author.display_name
+		server = ctx.guild.name
+		author = ctx.user.display_name
 		nice = mydb.get_nice(server)
-		await ctx.send("Master {}. {}".format(author,nice))
+		await ctx.response.send_message("Master {}. {}".format(author,nice))
 
-def setup(bot):
-	bot.add_cog(Compliments(bot))
+async def setup(bot):
+	await bot.add_cog(Compliments(bot))

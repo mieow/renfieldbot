@@ -3,47 +3,34 @@ import os
 from discord.ext import commands
 from cryptography.fernet import Fernet
 
-#https://www.geeksforgeeks.org/how-to-encrypt-and-decrypt-strings-in-python/
-
 def check_is_auth():
 	def predicate(ctx):
-		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
-		server = ctx.guild.name
-		admin_role = mydb.get_bot_setting("admin_role", "storytellers", server)
-		mydb.disconnect()
-		return ctx.author.guild_permissions.administrator or (admin_role.lower() in [y.name.lower() for y in ctx.author.roles])
-		#return admin_role.lower() in [y.name.lower() for y in ctx.author.roles]
-	return commands.check(predicate)
+		try:
+			mydb = renfield_sql.renfield_sql()
+			mycursor = mydb.connect()
+			server = ctx.guild.name
+			admin_role = mydb.get_bot_setting("admin_role", "storytellers", server)
+			mydb.disconnect()
+		except Exception as e:
+			print(e)
+		
 
-# msg_info (dictionary) = {
-#	"command" = help | tell | speak | ...,
-#	"source" = {
-#				"name" = <author>,
-#				"server" = <server>,
-#				"vchannel" = <channel>,
-#				},
-#	"target" = {
-#				"name" = <target character>,
-#				"server" = <server>,
-#				"channel" = <channel>
-#				}
-#	"message" = <message text>,
-#	"raw"     = <full message text, no processing>
-#	"
-# }
-#def parse_message(???):
-	# copy in code from monitor to work out source - i.e. who is sending msg
+		try:
+			return ctx.author.guild_permissions.administrator or (admin_role.lower() in [y.name.lower() for y in ctx.author.roles])
+		except Exception as e:
+			print(e)
+
+	return commands.check(predicate)
 	
 # function to create & write encryption key
 def write_key():
 	if os.path.isfile("/home/renfield/.wp_key"):
-		return "Key exists"
+		return "using existing key"
 	else:
 		key = Fernet.generate_key()
 		with open("/home/renfield/.wp_key", "wb") as key_file:
 			key_file.write(key)
-		return "New key generated"
+		return "new key generated"
  
 # function to read encryption key
 def load_key():

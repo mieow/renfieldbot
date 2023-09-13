@@ -233,7 +233,7 @@ class renfield_sql():
 			"message" : ""
 		}
 		mycursor = self.connect()
-	
+				
 		count = 0
 		try:
 			sql = "select count(member_id) from members where name = %s"
@@ -261,7 +261,7 @@ class renfield_sql():
 				mydb.commit()
 				member_id = mycursor.lastrowid
 				result["member_id"] = member_id
-				result["message"] = 'Thank you, Master. I have added your name to the members list.'
+				#result["message"] = 'Thank you, Master. I have added your name to the members list.'
 			except Exception as e:
 				print(e)
 				result["message"] = 'I\'m sorry, Master, I was unable to add your name to the member list.'
@@ -282,15 +282,16 @@ class renfield_sql():
 				result["message"] = 'I\'m sorry, Master, I was unable to find your membership number.'
 				result["status"] = 0
 		
-			old_player = self.get_player_name(member_id, server)
+			old_player = self.get_player_name(member_id, nameid)
 		
 			if playername != old_player and playername != "":
 				try:
+					mycursor = self.connect()
 					sql = "UPDATE members SET playername = %s WHERE member_id = %s"				
 					val = (playername, member_id)
 					mycursor.execute(sql, val)
-					mydb.commit()
-					result["message"] = 'I had you listed here as {} but I suppose you can call yourself {} if you want, instead.'.format(playername, old_player)
+					self.commit()
+					result["message"] = 'I had you listed here as {} but I suppose you can call yourself {} if you want, instead.'.format(old_player, playername)
 				except Exception as e:
 					print(e)
 					result["message"] = 'I\'m sorry, Master, I was unable to update your membership with your player name.'
@@ -298,7 +299,7 @@ class renfield_sql():
 		
 		return result
 
-	def get_player_name(self, member_id, server):
+	def get_player_name(self, member_id, nameid):
 		mycursor = self.connect()
 		playername = ""
 		# get the current level of the setting
@@ -381,3 +382,4 @@ class renfield_sql():
 			print(e)
 
 		return info
+		
