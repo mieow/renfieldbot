@@ -24,8 +24,7 @@ class Settings(commands.Cog):
 	@app_commands.choices(setting_name=[
 		app_commands.Choice(name="Set Role name for Storytellers", value="admin_role"),
 		app_commands.Choice(name="Set URL of Wordpress Site with Character Plugin", value="wordpress_site"),
-		app_commands.Choice(name="Set voice for Renfield from AWS Polly text-to-speech", value="polly_voice"),
-		app_commands.Choice(name="Set number of words per month limit for the AWS Polly service", value="word_limit"),
+		app_commands.Choice(name="Set voice for Renfield from AWS Polly text-to-speech", value="polly_voice")
 	])
 	@check_is_auth()
 	async def _config(self, ctx, setting_name: str="", *, setting_value: str=""):
@@ -35,7 +34,7 @@ class Settings(commands.Cog):
 		server = ctx.guild.name
 		
 		#available settings
-		settings = ['admin_role', 'wordpress_site', 'polly_voice', 'word_limit']
+		settings = ['admin_role', 'wordpress_site', 'polly_voice']
 		voices = ["Jan", "Aditi ", "Amy  ", "Astrid", "Bianca", "Brian", "Camila", "Carla", "Carmen", "Céline/Celine", "Chantal", "Conchita", "Cristiano", "Dóra/Dora", "Emma", "Enrique", "Ewa", "Filiz", "Geraint", "Giorgio", "Gwyneth", "Hans", "Inês/Ines", "Ivy", "Jacek", "Joanna  ", "Joey", "Justin", "Karl", "Kendra", "Kimberly", "Léa", "Liv", "Lotte", "Lucia", "Lupe  ", "Mads", "Maja", "Marlene", "Mathieu", "Matthew  ", "Maxim", "Mia", "Miguel", "Mizuki", "Naja", "Nicole", "Penélope/Penelope", "Raveena", "Ricardo", "Ruben", "Russell", "Salli", "Seoyeon", "Takumi", "Tatyana", "Vicki", "Vitória/Vitoria", "Zeina", "Zhiyu"]
 		rows = []
 				
