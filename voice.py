@@ -35,7 +35,7 @@ class Voice(commands.Cog):
 		channel="Name of voice channel",
 		text="What you want the bot to say"
 	)
-	async def speak(self, ctx, channel: str, text: str):
+	async def speak(self, ctx, channel: discord.VoiceChannel, text: str):
 		server = ctx.guild
 		mydb = renfield_sql.renfield_sql()
 		myvoice = mydb.get_bot_setting("polly_voice", "Brian", server.name)
@@ -45,12 +45,12 @@ class Voice(commands.Cog):
 		try:
 			for vc in server.voice_channels:
 				vcname = "{}".format(vc.name)
-				if vcname.upper() == channel.upper():
+				if vcname.upper() == channel.name.upper():
 					found += 1
 					vchannel = vc
 
 		except Exception as e:
-			await ctx.response.send_message('I\'m sorry, Master. I can\'t find the {} voice channel. Did you spell it correctly?'.format(channel))
+			await ctx.response.send_message('I\'m sorry, Master. I can\'t find the {} voice channel. Did you spell it correctly?'.format(channel.name))
 			print(e)
 		
 		accessok = 0
@@ -186,12 +186,7 @@ class Voice(commands.Cog):
 							except Exception as e:
 								await ctx.message.send('I\'m sorry, Master. I couldn\t remove the sound file after playing')
 								print(e)
-							
-							# try:
-								# await client.disconnect()
-							# except Exception as e:
-								# await ctx.response.send_message('I\'m sorry, Master. I can\'t leave the voice channel.')
-								# print(e)
+
 						else:
 							await ctx.response.send_message('I\'m sorry, Master. I can\'t connect fully to the voice channel to play anything.'.format(channel))
 
