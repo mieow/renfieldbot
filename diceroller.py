@@ -1,6 +1,7 @@
 import random
 import discord
 from discord.ext import commands
+from discord import Embed, app_commands
 
 # SUCCESSES - BOLD
 # 10S - ITALIC
@@ -11,13 +12,16 @@ class DiceRoller(commands.Cog):
 		self.bot = bot
 		self._last_member = None
 
-	@commands.command(name='roll', help='Dice roller')
+	@app_commands.command(name='roll', description='Dice roller')
+	@app_commands.describe(
+		dicepool="Number of D10s to roll",
+	)
 	async def roll(self, ctx, dicepool: int):
-		author = ctx.message.author.display_name
+		author = ctx.user.display_name
 		if dicepool > 40:
-			await ctx.send('I\'m sorry, Master {}, I only have 40 dice in my dice bag.'.format(author))
+			await ctx.response.send_message('I\'m sorry, Master {}, I only have 40 dice in my dice bag.'.format(author))
 		elif dicepool <= 0:
-			await ctx.send('You are having a jest with me, Master {}, I cannot roll that number of dice.'.format(author))
+			await ctx.response.send_message('You are having a jest with me, Master {}, I cannot roll that number of dice.'.format(author))
 		else:
 			try:
 				rolled = []
@@ -36,7 +40,7 @@ class DiceRoller(commands.Cog):
 						str = str + "*{}* ".format(roll)
 					else:
 						str = str + "{} ".format(roll)
-				await ctx.send("Master {}, I have rolled these for you: ".format(author) + str)
+				await ctx.response.send_message("Master {}, I have rolled these for you: ".format(author) + str)
 			except Exception as e:
 				print('Renfield is confused')
 				print(e)
@@ -48,7 +52,7 @@ class DiceRoller(commands.Cog):
 
 	async def cog_command_error(self, ctx, error):
 		if isinstance(error, commands.MissingRequiredArgument):
-			await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
+			await ctx.response.send_message("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
 
-def setup(bot):
-	bot.add_cog(DiceRoller(bot))
+async def setup(bot):
+	await bot.add_cog(DiceRoller(bot))
