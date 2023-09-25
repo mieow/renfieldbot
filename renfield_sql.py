@@ -314,6 +314,23 @@ class renfield_sql():
 
 		return playername
 
+	def get_wordpress_id(self, nameid, server):
+		mycursor = self.connect()
+		wordpress_id = ""
+		# get the current level of the setting
+		try:
+			sql = "select wordpress_id from wp_link where name = %s and server = %s"
+			val = ("{}".format(nameid), "{}".format(server))
+			mycursor.execute(sql, val)
+			#print(mycursor.statement)
+			ids = mycursor.fetchall()
+			wordpress_id = ids[0][0]
+		except Exception as e:
+			print(e)
+
+		return wordpress_id
+
+
 	def save_link(self, nameid, wordpress_id, secret, server):
 		mycursor = self.connect()
 		ok = 1
