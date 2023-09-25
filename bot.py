@@ -4,6 +4,7 @@ import os
 import mysql.connector
 import discord
 import logging
+import logging.handlers
 import wordpress_api
 import renfield_sql
 import asyncio
@@ -69,7 +70,7 @@ OWNER = os.getenv('LOG_HOME')
 #			# do stuff here #
 
 
-#discord.utils.setup_logging(level=logging.DEBUG, root=False)
+handler = logging.FileHandler(filename=DISCORDLOG, encoding='utf-8', mode='w')
 
 intents = discord.Intents.default()
 intents.members = True
@@ -112,17 +113,33 @@ async def hello(ctx):
 	current = int(mydb.get_bot_setting("current_words", 0, "None"))
 	limit = int(os.getenv('POLLY_WORD_LIMIT'))
 	
-	message = 'Yes, Master {}, I am at your command! This is the "{}" guild server. I speak with the AWS Polly voice called {}.'.format(author,server, voice)
-
-	message = message + 'I have used {} out of my available {} AWS Polly words this month.'.format(current, limit)
+	message = 'Yes, Master {}, I am at your command!\n\nThis is the "{}" guild server. I speak with the AWS Polly voice called {}.'.format(author,server, voice)
+	message = message + 'I have used {} out of my available {} AWS Polly words this month.\n\n'.format(current, limit)
+	message = message + 'Name of Storyteller admin role: {}\n'.format(mydb.get_bot_setting("admin_role", "Storytellers", server))
+	message = message + 'Wordpress site: {}\n\n'.format(wordpress_site)
 	
 	if wordpress_site != "none":
 		if wordpress_api.curl_checkAPI(server):
-			message = message + " I have failed to connect to the {} Wordpress site".format(wordpress_site)
+			message = message + "I have failed to connect to the {} Wordpress site".format(wordpress_site)
 		else:
-			message = message + " I have successfully connected to the {} Wordpress site.".format(wordpress_site)
+			message = message + "I have successfully connected to the {} Wordpress site.".format(wordpress_site)
 		
 	await ctx.response.send_message(message)
+
+@bot.tree.command(name='debug', description='Toggle debug mode')
+@commands.is_owner()
+async def debug(ctx: discord.Interaction):
+	logger = logging.getLogger('discord')
+	try:
+		if logging.DEBUG == logger.level:
+			logger.setLevel(logging.INFO)
+			await ctx.response.send_message('Debug off')
+		else:
+			logger.setLevel(logging.DEBUG)
+			await ctx.response.send_message('Debug on')
+			
+	except Exception as e:
+		print(e)
 
 @bot.tree.command(name='sync', description='Sync new/updated commands to global')
 @commands.is_owner()
@@ -205,10 +222,24 @@ async def on_voice_state_update(member, before, after):
 
 
 async def main():
+	logger = logging.getLogger('discord')
+	logger.setLevel(logging.DEBUG)
+
+	handler = logging.handlers.RotatingFileHandler(
+		filename=DISCORDLOG,
+		encoding='utf-8',
+		maxBytes=32 * 1024 * 1024,  # 32 MiB
+		backupCount=5,  # Rotate through 5 files
+	)
+	dt_fmt = '%Y-%m-%d %H:%M:%S'
+	formatter = logging.Formatter('[{asctime}] [{levelname:<8}] {name}: {message}', dt_fmt, style='{')
+	handler.setFormatter(formatter)
+	logger.addHandler(handler)
+	
 	async with bot:
 		await bot.load_extension("events")
 		await bot.load_extension("niceness")
-		# await bot.load_extension("diceroller")
+		await bot.load_extension("diceroller")
 		await bot.load_extension("settings")
 		await bot.load_extension("wordpress_api")
 		await bot.load_extension("voice")
