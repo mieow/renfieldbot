@@ -24,17 +24,23 @@ class Settings(commands.Cog):
 	@app_commands.choices(setting_name=[
 		app_commands.Choice(name="Set Role name for Storytellers", value="admin_role"),
 		app_commands.Choice(name="Set URL of Wordpress Site with Character Plugin", value="wordpress_site"),
-		app_commands.Choice(name="Set voice for Renfield from AWS Polly text-to-speech", value="polly_voice")
+		app_commands.Choice(name="Set voice for Renfield from AWS Polly text-to-speech", value="polly_voice"),
+		app_commands.Choice(name="Set default location for events", value="event_location"),
+		app_commands.Choice(name="Set default start time for events (HH:MM) in UTC", value="event_start"),
+		app_commands.Choice(name="Set default finish time for events (HH:MM) in UTC", value="event_end"),
+		app_commands.Choice(name="Set default description time for events", value="event_desc"),
+		app_commands.Choice(name="Set text channel for bot logging", value="cubby-hole"),
+		app_commands.Choice(name="Enable voice channel activity logging (on/off)", value="voice-activity")
 	])
 	@check_is_auth()
-	async def _config(self, ctx, setting_name: str="", *, setting_value: str=""):
+	async def _config(self, ctx, setting_name: str, setting_value: str):
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
 		author = ctx.user.display_name
 		server = ctx.guild.name
 		
 		#available settings
-		settings = ['admin_role', 'wordpress_site', 'polly_voice']
+		settings = ['admin_role', 'voice-activity', 'cubby-hole', 'wordpress_site', 'polly_voice', 'event_location', 'event_start', 'event_end', 'event_desc']
 		voices = ["Jan", "Aditi ", "Amy  ", "Astrid", "Bianca", "Brian", "Camila", "Carla", "Carmen", "Céline/Celine", "Chantal", "Conchita", "Cristiano", "Dóra/Dora", "Emma", "Enrique", "Ewa", "Filiz", "Geraint", "Giorgio", "Gwyneth", "Hans", "Inês/Ines", "Ivy", "Jacek", "Joanna  ", "Joey", "Justin", "Karl", "Kendra", "Kimberly", "Léa", "Liv", "Lotte", "Lucia", "Lupe  ", "Mads", "Maja", "Marlene", "Mathieu", "Matthew  ", "Maxim", "Mia", "Miguel", "Mizuki", "Naja", "Nicole", "Penélope/Penelope", "Raveena", "Ricardo", "Ruben", "Russell", "Salli", "Seoyeon", "Takumi", "Tatyana", "Vicki", "Vitória/Vitoria", "Zeina", "Zhiyu"]
 		rows = []
 				
