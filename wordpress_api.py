@@ -59,6 +59,7 @@ class WordPressAPI(commands.Cog):
 					else:
 						await ctx.response.send_message('I\'m sorry Master, I recieved this error message when I tried to connect: {}'.format(wpinfo))
 				else:
+					# add to any server roles that match their WP account role names
 					wproles = wpinfo["roles"]
 					for wprole in wproles:
 						for r in ctx.guild.roles:
@@ -66,7 +67,9 @@ class WordPressAPI(commands.Cog):
 								member = ctx.user
 								role = get(member.guild.roles, name=r.name)
 								await member.add_roles(role)
-								
+					
+					# add/update Player Name in member table
+					
 				
 					await ctx.response.send_message('Thank you {}. I have connected to your wordpress account.'.format(wpinfo["name"]))
 
@@ -210,7 +213,7 @@ def get_my_character(nameid: str, server: str):
 			# # character isn't linked?
 			# # password is wrong
 			if "code" in result:
-				characterinfo["code"] = wpresult["code"]
+				characterinfo["code"] = result["code"]
 				if result["code"] == 'no_character':
 					characterinfo["message"] = "Wordpress account {} does not have a character associated with it.".format(wpresult["username"])
 				else:
