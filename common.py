@@ -50,3 +50,22 @@ def str_decode(encMessage):
 	key = load_key()
 	fernet = Fernet(key)
 	return fernet.decrypt(encMessage).decode()
+
+def get_log_channel(server):
+	logchannel = server.system_channel
+	try:
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
+		cubbyhole = mydb.get_bot_setting("cubby-hole", "renfields-cubby-hole", server.name)
+		mydb.disconnect()
+		
+		for outchannel in server.channels:
+			if outchannel.name == cubbyhole:
+				logchannel = outchannel
+				break
+				
+	except Exception as e:
+		print(e)
+
+
+	return logchannel
