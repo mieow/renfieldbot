@@ -3,14 +3,16 @@ from discord.ext import commands
 from tabulate import tabulate
 import mysql.connector
 from datetime import date
-from datetime import datetime
+from datetime import datetime, timezone
 import renfield_sql
-from common import check_is_auth
+from common import check_is_auth, get_log_channel
 # from discord_slash import cog_ext, SlashContext
 # from discord_slash.utils.manage_commands import create_option, create_choice
 from discord import Embed, app_commands
 from dotenv import load_dotenv
 import os
+import pytz
+from tempfile import gettempdir, mkstemp
 
 load_dotenv()
 GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
@@ -20,6 +22,111 @@ class Events(commands.Cog):
 	def __init__(self, bot):
 		self.bot = bot
 		self._last_member = None
+		
+	@commands.Cog.listener()
+	async def on_scheduled_event_create(self, event):
+		server = event.guild
+		name = event.name
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
+		logchannel = get_log_channel(server)
+		
+		# check if event of the same name already exists before trying to add it
+		event_count = 0
+		try:
+			sql = "select count(id) from events where name = %s and server = %s"
+			val = (name, server.name)
+			mycursor.execute(sql,val)
+			#print(mycursor.statement)
+			events = mycursor.fetchone()
+			event_count = events[0]
+			#await logchannel.send('Event creation: I have found {} events with name {} in this server.'.format(event_count, name))
+		except Exception as e:
+			print(mycursor.statement)
+			print(e)
+			await logchannel.send('I could not find event {} in my database - it is unique'.format(name))
+
+		if event_count == 0:
+			try:
+				# Create event in the database
+				sql = "INSERT INTO events (name, server, eventdate) VALUES (%s, %s, %s)"
+				val = (name, server.name, event.start_time)
+				mycursor.execute(sql, val)
+				mydb.commit()
+				await logchannel.send('I have recorded the new {} event in the diary for {}'.format(name, event.start_time))
+			except Exception as e:
+				await logchannel.send('I could not save the new {} event details into my memory'.format(name))
+				print(e)
+		else:
+			await logchannel.send('An event already exists with the name "{}". I cannot add this to my database.'.format(name))
+
+		#await logchannel.send("Event created")
+		
+	@commands.Cog.listener()
+	async def on_scheduled_event_delete(self, event):
+		server = event.guild
+		logchannel = get_log_channel(server)
+		
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
+		guild = event.guild.name
+		name = event.name
+		
+		# check if event exists before trying to delete it
+		event_count = 0
+		try:
+			sql = "select count(id) from events where name = %s and server = %s"
+			val = (name, server.name)
+			mycursor.execute(sql,val)
+			events = mycursor.fetchone()
+			event_count = events[0]
+			await logchannel.send('Event deletion: I have found {} events name {} on this server.'.format(event_count, name))
+		except Exception as e:
+			print(e)
+			print(mycursor.statement)
+			await logchannel.send('I could not find event {} to delete in my database'.format(name))
+
+		if event_count > 0:
+		
+			sql = "select id from events where name = %s and server = %s"
+			mycursor.execute(sql,(name,server.name))
+			events = mycursor.fetchone()
+			event_id = events[0]
+		
+			# delete associated attendance as well
+			try:
+				sql = "DELETE FROM `attendance` WHERE event_id = %s"
+				mycursor.execute(sql, (event_id, ))
+				mydb.commit()
+				#await logchannel.send('I have cleared the attendance list for the event. {} attendees have been removed'.format(mycursor.rowcount))
+			except Exception as e:
+				await logchannel.send("I'm sorry Master, I am unable to clear the attendance list for deleted event {}.".format(name))
+				print(e)
+			
+			try:
+				sql = "DELETE FROM `events` WHERE id = %s"
+				mycursor.execute(sql, (event_id,))
+				mydb.commit()
+				await logchannel.send('I have removed the {} event from the schedule.'.format(name))
+			except Exception as e:
+				await logchannel.send("I am unable to remove event {} from the database.".format(name))
+				print(e)
+
+		mydb.disconnect()
+
+
+	@commands.Cog.listener()
+	async def on_scheduled_event_update(self, before, after):
+		print("Detected event update")
+		server = before.guild
+
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
+
+		logchannel = get_log_channel(server)
+
+		await logchannel.send("Event updated")
+	
 	
 	@app_commands.command(name='signin', description='Sign In to the event')
 	@app_commands.describe(player="Name of the player (not the character name)")
@@ -103,54 +210,64 @@ class Events(commands.Cog):
 		mydb.disconnect()
 		
 
-	# @signin.error
-	# async def signin_error(ctx, error):
-		# if isinstance(error, commands.MissingRequiredArgument):
-			# await ctx.send("I'm sorry Master, Who should I say is attending the event?")
-
-	@app_commands.command(name='new', description='Schedule a new LARP event')
+	@app_commands.command(name='addevent', description='Schedule a new LARP event')
 	@app_commands.describe(
 		eventname="Name of the event",
-		date="Event date (DD/MM/YYYY)",
-		time="Optional Start time (06:00pm default)"
+		eventdate="Event date (DD/MM/YYYY)",
 	)
 	@check_is_auth()
-	async def new(self, ctx, eventname: str, date: str, time: str='06:00pm'):
+	async def addevent(self, ctx, eventname: str, eventdate: str):
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
 		author = ctx.user.display_name
-		server = ctx.guild.name
-		date_time = '{} {}'.format(date, time)
+		server = ctx.guild
 		
-		# Check if user is allowed to use this command
-		admin_role = mydb.get_bot_setting("admin_role", "storytellers", server)
-		has_admin_role = (admin_role.lower() in [y.name.lower() for y in ctx.user.roles])
-		if not (ctx.user.guild_permissions.administrator or has_admin_role):
-			await ctx.response.send_message('I\'m sorry, Master, you do not have the authority to ask me to do that')
-			return
+		starttime = mydb.get_bot_setting("event_start", "18:00", server.name)
+		endtime = mydb.get_bot_setting("event_end", "23:00", server.name)
+		description = mydb.get_bot_setting("event_desc", "[No description]", server.name)
+		location = mydb.get_bot_setting("event_location", "[No location]", server.name)
 		
-		# add to database
-		dateok = 0
+		startdatetime = '{} {}'.format(eventdate, starttime)		
+		startdateok = 0
 		try:
-			event_date = datetime.strptime(date_time, '%d/%m/%Y %I:%M%p')
-			dateok = 1
+			event_start = datetime.strptime(startdatetime, '%d/%m/%Y %H:%M')
+			startdateok = 1
 		except Exception as e:
-			await ctx.response.send_message('I\'m sorry, Master, the format of the date and optional time is DD/MM/YYYY [08:00pm]')
+			await ctx.response.send_message('I\'m sorry, Master, the format of the start date and time is DD/MM/YYYY HH:MM')
+			print(e)
+		enddatetime = '{} {}'.format(eventdate, endtime)
+		enddateok = 0
+		try:
+			event_end = datetime.strptime(enddatetime, '%d/%m/%Y %H:%M')
+			enddateok = 1
+		except Exception as e:
+			await ctx.response.send_message('I\'m sorry, Master, the format of the end date and time is DD/MM/YYYY HH:MM')
 			print(e)
 		
-		if dateok:
+		# add the timezone
+		tz = pytz.timezone('UTC')
+		event_start = tz.localize(event_start)
+		event_end = tz.localize(event_end)
+		
+		if startdateok and enddateok:
 			# check that event is not in the past
-			present = datetime.now()
-			if event_date.date() < present.date():
-				await ctx.response.send_message('I\'m sorry, Master, event date you have specified is in the past.')
-				dateok = 0
-			
+			present = datetime.now(tz=timezone.utc)
+			if event_start < present:
+				await ctx.response.send_message('I\'m sorry, Master, the event start date you have specified is in the past.')
+				startdateok = 0
+			if event_end < present:
+				await ctx.response.send_message('I\'m sorry, Master, the event end date you have specified is in the past.')
+				startdateok = 0
+			if event_end < event_start:
+				await ctx.response.send_message('I\'m sorry, Master, the event end {} is before the start {}.'.format(event_end, event_start))
+				startdateok = 0
+				
 			# check event doesn't already exist
 			mycursor = mydb.connect()
 			isduplicate = 1
 			try:
-				sql = "SELECT COUNT(id) FROM events WHERE name = %s"
-				mycursor.execute(sql, (eventname,))
+				sql = "SELECT COUNT(id) FROM events WHERE name = %s and server = %s"
+				mycursor.execute(sql, (eventname,server.name))
 				out = mycursor.fetchall()
 				isduplicate = out[0][0]
 			except Exception as e:
@@ -159,18 +276,101 @@ class Events(commands.Cog):
 			
 			if isduplicate:
 				await ctx.response.send_message('I\'m sorry, Master, I already have an event with this name.')
+
+			if startdateok and isduplicate == 0:
 			
-			if dateok and isduplicate == 0:
-				try:
-					sql = "INSERT INTO events (name, server, eventdate) VALUES (%s, %s, %s)"
-					val = (mydb.connection._cmysql.escape_string(eventname), mydb.connection._cmysql.escape_string(server), event_date)
-					mycursor.execute(sql, val)
-					mydb.commit()
-					await ctx.response.send_message('Thank you Master {}, I have recorded the {} event in the diary for {}'.format(author, eventname, event_date))
-				except Exception as e:
-					await ctx.response.send_message('I\'m sorry, Master, I could not complete your command')
-					print(e)
-		mydb.disconnect()
+				if ctx.guild.me.guild_permissions.manage_events: 
+
+					savedok = 0
+					try:
+						# Create event in Discord
+						newevent = await server.create_scheduled_event(name=eventname, 
+							start_time=event_start, 
+							location=location, 
+							end_time=event_end, 
+							description=description,
+							entity_type=discord.EntityType.external,
+							privacy_level=discord.PrivacyLevel.guild_only)
+						
+						savedok = 1
+						await ctx.response.send_message('Thank you, Master. I have added the {} event to my diary'.format(eventname))
+					except Exception as e:
+						await ctx.response.send_message('I\'m sorry, Master, I could not schedule event {} for {} to {}'.format(eventname, event_start, event_end))
+						print(e)
+					
+					# on-create event will then save the new event to the database
+					
+				else:
+					await ctx.response.send_message('I\'m sorry, Master, I do not have permission to manage events.')
+
+	# @signin.error
+	# async def signin_error(ctx, error):
+		# if isinstance(error, commands.MissingRequiredArgument):
+			# await ctx.send("I'm sorry Master, Who should I say is attending the event?")
+
+	# @app_commands.command(name='new', description='Schedule a new LARP event')
+	# @app_commands.describe(
+		# eventname="Name of the event",
+		# date="Event date (DD/MM/YYYY)",
+		# time="Optional Start time (06:00pm default)"
+	# )
+	# @check_is_auth()
+	# async def new(self, ctx, eventname: str, date: str, time: str='06:00pm'):
+		# mydb = renfield_sql.renfield_sql()
+		# mycursor = mydb.connect()
+		# author = ctx.user.display_name
+		# server = ctx.guild.name
+		# date_time = '{} {}'.format(date, time)
+		
+		# # Check if user is allowed to use this command
+		# admin_role = mydb.get_bot_setting("admin_role", "storytellers", server)
+		# has_admin_role = (admin_role.lower() in [y.name.lower() for y in ctx.user.roles])
+		# if not (ctx.user.guild_permissions.administrator or has_admin_role):
+			# await ctx.response.send_message('I\'m sorry, Master, you do not have the authority to ask me to do that')
+			# return
+		
+		# # add to database
+		# dateok = 0
+		# try:
+			# event_date = datetime.strptime(date_time, '%d/%m/%Y %I:%M%p')
+			# dateok = 1
+		# except Exception as e:
+			# await ctx.response.send_message('I\'m sorry, Master, the format of the date and optional time is DD/MM/YYYY [08:00pm]')
+			# print(e)
+		
+		# if dateok:
+			# # check that event is not in the past
+			# present = datetime.now()
+			# if event_date.date() < present.date():
+				# await ctx.response.send_message('I\'m sorry, Master, event date you have specified is in the past.')
+				# dateok = 0
+			
+			# # check event doesn't already exist
+			# mycursor = mydb.connect()
+			# isduplicate = 1
+			# try:
+				# sql = "SELECT COUNT(id) FROM events WHERE name = %s"
+				# mycursor.execute(sql, (eventname,))
+				# out = mycursor.fetchall()
+				# isduplicate = out[0][0]
+			# except Exception as e:
+				# await ctx.response.send_message('I\'m sorry, Master, I could not check if an event already exists with this name.')
+				# print(e)
+			
+			# if isduplicate:
+				# await ctx.response.send_message('I\'m sorry, Master, I already have an event with this name.')
+			
+			# if dateok and isduplicate == 0:
+				# try:
+					# sql = "INSERT INTO events (name, server, eventdate) VALUES (%s, %s, %s)"
+					# val = (eventname, server, event_date)
+					# mycursor.execute(sql, val)
+					# mydb.commit()
+					# await ctx.response.send_message('Thank you Master {}, I have recorded the {} event in the diary for {}'.format(author, eventname, event_date))
+				# except Exception as e:
+					# await ctx.response.send_message('I\'m sorry, Master, I could not complete your command')
+					# print(e)
+		# mydb.disconnect()
 
 	async def cog_command_error(self, ctx, error):
 		if isinstance(error, commands.MissingRequiredArgument):
@@ -178,23 +378,85 @@ class Events(commands.Cog):
 
 
 	@app_commands.command(name='list', description='list game events and attendance')
-	@app_commands.describe(
-		action="Specify what event information to show",
-		event="Name of event (Optional)"
-	)
-	@app_commands.choices(action=[
-		app_commands.Choice(name="List all events", value="all"),
-		app_commands.Choice(name="Show next event (default)", value="next"),
-		app_commands.Choice(name="Show attendance list of a specific event", value="one"),
-	])
-	async def list(self, ctx, action: str='next', event: str=''):
+	async def list(self, ctx):
 		'''Displays the list of current events
 			example: .list
 		'''
-		# TODO: NEXT EVENT DOESN'T SHOW NEXT ONE FROM NOW
-		# list	 - list next event
-		# list all - list events and attendance numbers
-		# list <event> - list who attended the event (ST Only)
+
+		mydb = renfield_sql.renfield_sql()
+		mycursor = mydb.connect()
+		author = ctx.user.display_name
+		nameid = ctx.user.id
+		guild = ctx.guild.name
+		datetoday = date.today()
+		outputok = 1
+		try:
+			# list events and attendance numbers
+			sql = """SELECT events.name, events.eventdate, count(attendance.member_id)
+				FROM events
+						LEFT JOIN attendance
+						ON attendance.event_id = events.id
+				WHERE server = %s
+				GROUP BY events.id
+				ORDER BY eventdate DESC"""
+			mycursor.execute((sql), (guild,))
+			events = mycursor.fetchall()
+			headers = ['Name', 'Date', 'Attendance']
+			rows = [[e[0], e[1], e[2]] for e in events]
+			table = tabulate(rows, headers)
+		except Exception as e:
+			print(mycursor.statement)
+			print(e)
+			outputok = 0
+
+		try:
+			fd, output = mkstemp(suffix=".txt", prefix="events")
+			with os.fdopen(fd, 'w') as file:
+				file.write(table)
+
+			with open(output, 'r') as fp:
+				await ctx.response.send_message(content="Download full list", file=discord.File(fp, 'events.txt'))
+			
+			#os.close(fd)
+			
+		except Exception as e:
+			await ctx.response.send_message("I'm sorry Master, I am unable to provide the event details you requested")
+			print(mycursor.statement)
+			print(e)
+			outputok = 0
+		
+		# try:
+			# sql = """SELECT events.name, events.eventdate, count(attendance.member_id)
+				# FROM events
+						# LEFT JOIN attendance
+						# ON attendance.event_id = events.id
+				# WHERE server = %s
+				# GROUP BY events.id
+				# ORDER BY eventdate DESC
+				# LIMIT 10"""
+			# mycursor.execute((sql), (guild,))
+			# events = mycursor.fetchall()
+			# headers = ['Name', 'Date', 'Attendance']
+			# rows = [[e[0], e[1], e[2]] for e in events]
+			# table = tabulate(rows, headers)
+
+			# await ctx.channel.send('```\n' + table + '```')
+			
+		except Exception as e:
+			await ctx.response.send_message("I'm sorry Master, I am unable to provide the event details you requested")
+			print(mycursor.statement)
+			print(e)
+			outputok = 0
+			
+		mydb.disconnect()
+				
+
+	@app_commands.command(name='attendance', description='List attendance at an event')
+	@app_commands.describe(
+		event="Name of event"
+	)
+	async def attendance(self, ctx, event: str):
+
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
 		author = ctx.user.display_name
@@ -202,63 +464,41 @@ class Events(commands.Cog):
 		guild = ctx.guild.name
 		datetoday = date.today()
 		try:
-			if action == 'all':
-				# list events and attendance numbers
-				sql = """SELECT events.name, events.eventdate, count(attendance.member_id)
-					FROM events
-							LEFT JOIN attendance
-							ON attendance.event_id = events.id
-					WHERE server = %s
-					GROUP BY events.id
-					ORDER BY eventdate"""
-				mycursor.execute((sql), (mydb.connection._cmysql.escape_string(guild),))
+
+			# TODO: account for when no one has signed in
+			sql = """SELECT COUNT(attendance.id)
+				FROM
+					attendance, events
+				WHERE
+					attendance.event_id = events.id
+					AND events.name = %s"""
+
+			mycursor.execute((sql), (event,))
+			countall = mycursor.fetchall()
+			count = countall[0][0]
+							
+			if count > 0:
+				# list users who attended
+				sql = """SELECT attendance.displayname, members.playername, events.eventdate
+					FROM 
+						events,
+						attendance,
+						members
+					WHERE 
+						events.server = %s
+						AND events.name = %s
+						AND events.id = attendance.event_id
+						AND members.member_id = attendance.member_id
+					ORDER BY attendance.displayname"""
+
+				mycursor.execute((sql), (guild, event))
 				events = mycursor.fetchall()
-				headers = ['Name', 'Date', 'Attendance']
-				rows = [[e[0], e[1], e[2]] for e in events]
+				headers = ['Character', 'Player']
+				rows = [[e[0], e[1]] for e in events]
 				table = tabulate(rows, headers)
-				await ctx.response.send_message('```\n' + table + '```')
-			elif action == 'next':
-				# list next event
-				headers = ['Name', 'Date']
-				sql = "SELECT * FROM events WHERE server = %s AND now() < eventdate ORDER BY eventdate LIMIT 1"
-				mycursor.execute((sql), (mydb.connection._cmysql.escape_string(guild),))
-				events = mycursor.fetchall()
-				await ctx.response.send_message("Master {}, the next event is {} and it takes place on the {}".format(author, events[0][1], events[0][3]))
+				await ctx.response.send_message('```Attendance for the ' + event + ' event on the {}:\n\n'.format(events[0][2]) + table + '```')
 			else:
-				# TODO: account for when no one has signed in
-				sql = """SELECT COUNT(attendance.id)
-					FROM
-						attendance, events
-					WHERE
-						attendance.event_id = events.id
-						AND events.name = %s"""
-
-				mycursor.execute((sql), (event,))
-				countall = mycursor.fetchall()
-				count = countall[0][0]
-								
-				if count > 0:
-					# list users who attended
-					sql = """SELECT attendance.displayname, members.playername, events.eventdate
-						FROM 
-							events,
-							attendance,
-							members
-						WHERE 
-							events.server = %s
-							AND events.name = %s
-							AND events.id = attendance.event_id
-							AND members.member_id = attendance.member_id
-						ORDER BY attendance.displayname"""
-
-					mycursor.execute((sql), (guild, event))
-					events = mycursor.fetchall()
-					headers = ['Character', 'Player']
-					rows = [[e[0], e[1]] for e in events]
-					table = tabulate(rows, headers)
-					await ctx.response.send_message('```Attendance for the ' + event + ' event on the {}:\n\n'.format(events[0][2]) + table + '```')
-				else:
-					await ctx.response.send_message('```Attendance for the ' + event + ' event:\n\nNo attendees```')
+				await ctx.response.send_message('```Attendance for the ' + event + ' event:\n\nNo attendees```')
 		except Exception as e:
 			await ctx.response.send_message("I'm sorry Master, I am unable to provide the event details you requested")
 			print(e)
@@ -295,6 +535,7 @@ class Events(commands.Cog):
 				sql = "DELETE FROM `attendance` WHERE event_id = '{}'".format(event_id)
 				mycursor.execute(sql)
 				mydb.commit()
+
 				#await ctx.response.send_message('I have cleared the attendance list for the event. {} attendees have been removed'.format(mycursor.rowcount))
 			except Exception as e:
 				await ctx.response.send_message("I'm sorry Master, I am unable to clear the attendance list.")
@@ -308,8 +549,8 @@ class Events(commands.Cog):
 			except Exception as e:
 				await ctx.response.send_message("I'm sorry Master, I am unable to remove the event from the calendar.")
 				print(e)
-		else:
-			await ctx.response.send_message('I\'m sorry, Master {}, the {} event does not exist'.format(author, name))	
+		#else:
+		#	await ctx.response.send_message('I\'m sorry, Master {}, the {} event does not exist'.format(author, name))	
 		mydb.disconnect()
 
 	# # @delete.error
