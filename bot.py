@@ -135,8 +135,9 @@ async def hello(ctx):
 		if wordpress_api.curl_checkAPI(server):
 			message = message + "I have failed to connect to the {} Wordpress site".format(wordpress_site)
 		else:
-			message = message + "I have successfully connected to the {} Wordpress site.".format(wordpress_site)
-		
+			message = message + "I have successfully connected to the Wordpress site. Users can get the application password they need to link their account from here: {}/wp-admin/authorize-application.php?app_name=Renfield.".format(wordpress_site)
+	
+	
 	await ctx.response.send_message(message)
 
 @bot.tree.command(name='debug', description='Toggle debug mode')
@@ -145,7 +146,7 @@ async def debug(ctx: discord.Interaction):
 	logger = logging.getLogger('discord')
 	try:
 		if logging.DEBUG == logger.level:
-			logger.setLevel(logging.INFO)
+			logger.setLevel(logging.DEBUG)
 			await ctx.response.send_message('Debug off')
 		else:
 			logger.setLevel(logging.DEBUG)
@@ -173,6 +174,10 @@ async def on_command_error(ctx, error):
 		await ctx.send("I'm sorry Master, I do not know that command.")
 
 # Event
+# @bot.event
+# async def on_scheduled_event_update(before, after):
+	# print("Bot detected event update")
+
 # discord.on_voice_state_update(member, before, after)
 # VoiceState -> channel -> VoiceChannel
 # check if before <> after
