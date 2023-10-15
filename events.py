@@ -117,15 +117,35 @@ class Events(commands.Cog):
 
 	@commands.Cog.listener()
 	async def on_scheduled_event_update(self, before, after):
-		print("Detected event update")
 		server = before.guild
 
 		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
 
 		logchannel = get_log_channel(server)
+		log_voice_channel = mydb.get_bot_setting("voice-activity", "off", server.name)
+		message = ""
+		
+		# Update the event name, if it has changed
+		doupdate = 0
+		if before.name != after.name:
+			doupdate = 1
+			message = message + "Event name changed from '{}' to '{}'. ".format(before.name, after.name)
 
-		await logchannel.send("Event updated")
+		if before.start_time != after.start_time:
+			doupdate = 1
+			message = message + "Event '{}' start changed to {} (GMT/UTC). ".format(after.name, after.start_time)
+
+		if doupdate:
+			result = mydb.update_event(before.name, after.name, after.start_time, server.name)
+			if result:
+				message = message + "Event has been updated in the database."
+			else:
+				message = message + "Failed to update event '{}' in database.".format(after.name)
+		else:
+			message = message + "Event '{}' has been modified.".format(after.name)
+
+		if log_voice_channel == "on":
+			await logchannel.send(message)
 	
 	
 	@app_commands.command(name='signin', description='Sign In to the event')
@@ -233,7 +253,7 @@ class Events(commands.Cog):
 			event_start = datetime.strptime(startdatetime, '%d/%m/%Y %H:%M')
 			startdateok = 1
 		except Exception as e:
-			await ctx.response.send_message('I\'m sorry, Master, the format of the start date and time is DD/MM/YYYY HH:MM')
+			await ctx.response.send_message('I\'m sorry, Master, the format of the start date is DD/MM/YYYY')
 			print(e)
 		enddatetime = '{} {}'.format(eventdate, endtime)
 		enddateok = 0
@@ -241,7 +261,7 @@ class Events(commands.Cog):
 			event_end = datetime.strptime(enddatetime, '%d/%m/%Y %H:%M')
 			enddateok = 1
 		except Exception as e:
-			await ctx.response.send_message('I\'m sorry, Master, the format of the end date and time is DD/MM/YYYY HH:MM')
+			await ctx.response.send_message('I\'m sorry, Master, the format of the end date is DD/MM/YYYY')
 			print(e)
 		
 		# add the timezone
@@ -505,7 +525,7 @@ class Events(commands.Cog):
 		mydb.disconnect()
 
 
-	@app_commands.command(name='delete', description='Delete an event')
+	@app_commands.command(name='delete', description='Delete an event (from the database only)')
 	@app_commands.describe(
 		name="Event name to delete",
 	)
