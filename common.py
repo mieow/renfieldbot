@@ -21,7 +21,27 @@ def check_is_auth():
 			print(e)
 
 	return commands.check(predicate)
-	
+
+def check_restapi_active():
+	def predicate(ctx):
+		try:
+			mydb = renfield_sql.renfield_sql()
+			mycursor = mydb.connect()
+			server = ctx.guild.name
+			wordpress_site = mydb.get_bot_setting("wordpress_site", "none", server)
+			mydb.disconnect()
+			
+			if wordpress_site == "none":
+				return false
+			else:
+				return true
+		except Exception as e:
+			print(e)
+		
+
+	return commands.check(predicate)
+
+
 # function to create & write encryption key
 def write_key():
 	if os.path.isfile("/home/renfield/.wp_key"):
@@ -67,5 +87,6 @@ def get_log_channel(server):
 	except Exception as e:
 		print(e)
 
-
 	return logchannel
+
+
