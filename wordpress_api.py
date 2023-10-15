@@ -5,7 +5,7 @@ import mysql.connector
 import os
 from tabulate import tabulate
 import renfield_sql
-from common import check_is_auth
+from common import check_is_auth, check_restapi_active
 # from interactions import cog_ext, SlashContext
 # from interactions.utils.manage_commands import create_option, create_choice
 from discord import Embed, app_commands
@@ -17,6 +17,7 @@ import json
 import requests
 import base64
 import urllib.parse
+import pprint
 
 # https://developer.wordpress.org/rest-api/extending-the-rest-api/adding-custom-endpoints/
 
@@ -28,12 +29,13 @@ class WordPressAPI(commands.Cog):
 	def __init__(self, bot):
 		self.bot = bot
 		
+	@check_restapi_active()
 	@app_commands.command(name="link", description="Link Discord Account to Wordpress Account")
 	@app_commands.describe(
 		wordpress_id="Wordpress Login Name",
 		wordpress_secret="Wordpress Account Secret"
 	)
-	async def link(self, ctx, wordpress_id: str="", wordpress_secret: str=""):
+	async def link(self, ctx, wordpress_id: str, wordpress_secret: str):
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
 		author = ctx.user.display_name
@@ -68,10 +70,33 @@ class WordPressAPI(commands.Cog):
 								role = get(member.guild.roles, name=r.name)
 								await member.add_roles(role)
 					
-					# add/update Player Name in member table
-					
-				
-					await ctx.response.send_message('Thank you {}. I have connected to your wordpress account.'.format(wpinfo["name"]))
+					# Get the info on the character
+					charinfo = get_my_character(nameid, server)
+					if "code" in charinfo:
+						await ctx.response.send_message('I\'m sorry Master, I failed to read your character {}'.format(charinfo["message"]))
+					else:
+						#pprint.pprint(charinfo)
+						
+						# add/update Player Name in member table
+						memberinfo = mydb.add_member(nameid, charinfo["result"]["player"], server)
+						
+						# set nickname (but not for the server owners or admins)
+						if ctx.guild.me.guild_permissions.manage_nicknames:
+							if ctx.user.guild_permissions.administrator:
+								await ctx.response.send_message('Account has been linked')
+							else:
+								nickname = charinfo["result"]["display_name"]
+								if charinfo["result"]["pronouns"] != "":
+									nickname += " (" + charinfo["result"]["pronouns"] + ")"
+								try:
+									await ctx.user.edit(nick=nickname)
+									await ctx.response.send_message('Thank you {}. I have connected to your wordpress account. Your Discord server nickname has been set to {}.'.format(charinfo["result"]["player"], nickname))
+								except Exception as e:
+									print(e)
+									await ctx.response.send_message('Failed to set nickname. Check that the bot has permission to manage nicknames.'.format(charinfo["result"]["player"], nickname))
+						else:
+							await ctx.response.send_message('Character has been linked, but I don\'t have permission on this server to set your nickname.'.format(charinfo["result"]["player"], nickname))
+
 
 			else:
 				await ctx.response.send_message("I\'m sorry Master, I can't seem to remember that. Something went wrong.")
@@ -84,6 +109,7 @@ class WordPressAPI(commands.Cog):
 			await ctx.channel.send("I failed.")
 			raise error
 
+	@check_restapi_active()
 	@app_commands.command(name="whoami", description="Report character information")
 	async def whoami(self, ctx):
 		nameid = ctx.user.id
@@ -99,28 +125,43 @@ class WordPressAPI(commands.Cog):
 			approved = charinfo["result"]["date_of_approval"]
 			char_status = charinfo["result"]["char_status"]
 			cname = charinfo["result"]["display_name"]
+			
+			pathrating = charinfo["result"]["path_rating"]
+			path = charinfo["result"]["path_of_enlightenment"]
+			maxwp = charinfo["result"]["willpower"]
+			
+			#pprint.pprint(charinfo["result"])
 		
-			await ctx.response.send_message("Hello {}. Your {} character is called {} and is currently {}. They were approved for play on {}.".format(player, clan,cname, char_status, approved))
+			await ctx.user.send("Hello {}. Your character is at {} on {} and has willpower {}. It was approved on {}.".format(player, pathrating, path, maxwp, approved))
+			await ctx.response.send_message("Your {} character is called {} and is currently {}.".format(clan, cname, char_status))
 
 
 
+	@check_restapi_active()
 	@app_commands.command(name="whois", description="Report character information of a specific character")
-	@check_is_auth()
 	async def whois(self, ctx, character: str):
 		nameid = ctx.user.id
 		server = ctx.guild.name
-		charinfo = get_character(server, nameid, character)
-		if "code" in charinfo:
-			await ctx.response.send_message(charinfo["message"])
-		else:
-			clan = charinfo["result"]["clan"]
-			player = charinfo["result"]["player"]
-			approved = charinfo["result"]["date_of_approval"]
-			char_status = charinfo["result"]["char_status"]
-			cname = charinfo["result"]["display_name"]
-			
-			await ctx.response.send_message("Hello {}. Your {} character is called {} and is currently {}. They were approved for play on {}.".format(player, clan,cname, char_status, approved))
-
+		
+		try:
+			if is_storyteller(nameid, ctx.guild):
+				charinfo = get_character(server, nameid, character)
+				if "code" in charinfo:
+					await ctx.response.send_message(charinfo["message"])
+				else:
+					clan = charinfo["result"]["clan"]
+					player = charinfo["result"]["player"]
+					approved = charinfo["result"]["date_of_approval"]
+					char_status = charinfo["result"]["char_status"]
+					cname = charinfo["result"]["display_name"]
+					
+					await ctx.response.send_message("Hello {}. The {} character is called {} and is currently {}. They were approved for play on {}.".format(player, clan,cname, char_status, approved))
+			else:
+				uri = "wp-json/vampire-character/v1/character/"
+				list = curl_get(uri, server, nameid)
+				await ctx.response.send_message("Show character summary")
+		except Exception as e:
+			print(e)
 
 # Check Wordpress API connection
 def curl_checkAPI(server):
@@ -134,8 +175,13 @@ def curl_get(endpoint, server, nameid: str=""):
 	
 	if nameid != "":
 		info = mydb.get_link(nameid, server)
-		wordpress_id = urllib.parse.quote(info["wordpress_id"])
-		secret = info["secret"]
+		if info["wordpress_id"] == "":
+			result = {}
+			result["code"] = "account_not_linked"
+			return result
+		else:
+			wordpress_id = urllib.parse.quote(info["wordpress_id"])
+			secret = info["secret"]
 	
 	apiurl = "{}/{}".format(wordpress_site, endpoint)
 
@@ -186,8 +232,12 @@ def get_my_character(nameid: str, server: str):
 		mydb = renfield_sql.renfield_sql()
 		mycursor = mydb.connect()
 		wordpress_site = mydb.get_bot_setting("wordpress_site", "none", server)
-
+		
 		characterinfo = {}
+		if wordpress_site == "none":
+			characterinfo["code"] = "not_enabled"
+			characterinfo["message"] = "This server is not linked to a Wordpress site"
+			return characterinfo
 
 		wpresult = curl_get_me(nameid, server)
 		meok = 0
@@ -199,7 +249,9 @@ def get_my_character(nameid: str, server: str):
 			elif code == 'invalid_username':
 				characterinfo["message"] = 'I\'m sorry Master, I can\'t log you in to the {} wordpress site. Does youe account still exist?'.format(wordpress_site)
 			elif code == 'incorrect_password':
-				characterinfo["message"] = 'I\'m sorry Master, That password is incorrect. You will need to set a new "Application Password" and then re-link your Discord account to your Wordpress account. Go to {}/wp-admin/profile.php to create one.'.format(wordpress_site)
+				characterinfo["message"] = 'I\'m sorry Master, That password is incorrect. You will need to set a new "Application Password" and then re-link your Discord account to your Wordpress account. Go to {}/wp-admin/authorize-application.php?app_name=Renfield to create one.'.format(wordpress_site)
+			elif code == 'account_not_linked':
+				characterinfo["message"] = 'I\'m sorry Master, you first need to use the /link command to link your account. Use this to get the application password: {}/wp-admin/authorize-application.php?app_name=Renfield'.format(wordpress_site)
 			else:
 				characterinfo["message"] = 'I\'m sorry Master, I recieved this error message when I tried to connect: {}'.format(wpinfo)
 			
@@ -232,6 +284,10 @@ def get_character(server: str, nameid: str, character: str):
 		wordpress_site = mydb.get_bot_setting("wordpress_site", "none", server)
 		
 		characterinfo = {}
+		if wordpress_site == "none":
+			characterinfo["code"] = "not_enabled"
+			characterinfo["message"] = "This server is not linked to a Wordpress site"
+			return characterinfo
 		
 		# validate character input
 		# Can be:
@@ -250,6 +306,8 @@ def get_character(server: str, nameid: str, character: str):
 				characterinfo["code"] = result["code"]
 				if result["code"] == 'rest_forbidden':
 					characterinfo["message"] = "I'm sorry, your linked Wordpress account needs to be a Storyteller or admin account."
+				elif code == 'account_not_linked':
+					characterinfo["message"] = 'I\'m sorry Master, you first need to use the /link command to link your account. Use this to get the application password: {}/wp-admin/authorize-application.php?app_name=Renfield'.format(wordpress_site)
 				else:
 					characterinfo["message"] = "Query for {}, ID {}, failed.".format(character, id)
 			else:
@@ -403,7 +461,16 @@ def get_character(server: str, nameid: str, character: str):
 		
 		return characterinfo
 		
-
+def is_storyteller(nameid, guild):
+	wpinfo = curl_get_me(nameid, guild.name)
+	if "code" in wpinfo:
+		return 0
+	else:
+		wproles = wpinfo["roles"]
+		for wprole in wproles:
+			if wprole.upper() == "STORYTELLER" or wprole.upper() == "ADMINISTRATOR":
+				return 1
+	return 0
 
 async def setup(bot):
 	await bot.add_cog(WordPressAPI(bot))
