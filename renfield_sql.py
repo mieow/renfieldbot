@@ -399,4 +399,21 @@ class renfield_sql():
 			print(e)
 
 		return info
-		
+
+	def update_event(self, beforename, aftername, starttime, server):
+		mycursor = self.connect()
+
+		ok = 0
+		# update
+		try:
+			sql = "UPDATE events SET name = %s, eventdate = %s WHERE name = %s and server = %s"				
+			val = (aftername, starttime, beforename, server)
+			mycursor.execute(sql, val)
+			self.commit()
+			ok = 1
+		except Exception as e:
+			print('update to events failed')
+			print(mycursor.statement)
+			print(e)
+	
+		return ok	
