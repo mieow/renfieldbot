@@ -9,7 +9,7 @@
 
 If you are migrating the bot to another server instance, you should first take a download of the existing database.
 
-> renfield> mysqldump....
+> renfield> mariadb-dump discordbot -p > /tmp/dump.sql
 
 
 ### Launch instance
@@ -23,8 +23,9 @@ https://aws.amazon.com/free/
 1. Quick Start:
 1.1 amazon Linux 2023, 64bit (x86) (free tier)
 1.1 t2.micro (free tier)
-1.1 Create/Select key pair
+1.1 Create new key pair
 1.1 Allow SSH from... My IP
+1.1 Advanced details - create an IAM profile with access to PollyVoice
 1. [ review and launch ]
 1. Launch
 
@@ -56,33 +57,24 @@ Upload scripts to /tmp
 > root> chmod u+x setup.sh
 > root> chmod a+x renfield-setup.sh
 
-Edit setupdatabase.sql to change the db password for the renfield db user
-
-> root> vi setupdatabase.sql
-
 If migrating, replace the createtables.sql file with the database dump.
 
 > root> scp <old>:/tmp/dump.sql /tmp/renfieldbot-master/scripts/createtables.sql
+
+Edit the setup script with the root and renfield database password:
+
+> root> vi setup.sh
 
 Run the setup script:
 
 > root> ./setup.sh
 
-### Setup database
-
-Then secure the mariadb setup and set the database root password:
-
-> root> mariadb-secure-installation
-
-mariadb -u root -p < setupdatabase.sql
-mariadb -u renfield -p discordbot < createtables.sql
-
 
 ### Final setup
 
-setup service
-setup .env file
+Edit the /home/renfield/.env file with your discord bot information
 
+Edit the /home/renfield/.aws/credentials file with your aws polly credentials
 
 # Invite the bot to your server
 
