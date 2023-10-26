@@ -10,12 +10,13 @@ python3 -m pip install --upgrade python-dotenv
 python3 -m pip install --upgrade discord-py-interactions
 python3 -m pip install --upgrade discord-py-slash-command
 python3 -m pip install --upgrade certifi
-python3 -m pip install --upgrade cryptography
+#python3 -m pip install --upgrade cryptography
 python3 -m pip install --upgrade boto3
 python3 -m pip install --upgrade opuslib
 python3 -m pip install --upgrade discord.py[voice]
 python3 -m pip install --upgrade pycurl
 python3 -m pip install --upgrade pytz
+python3 -m pip install --upgrade awscli
 
 cd
 mkdir logs
