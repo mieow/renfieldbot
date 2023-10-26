@@ -5,13 +5,28 @@
 
 ## Setting up on AWS
 
+### Migration
+
+If you are migrating the bot to another server instance, you should first take a download of the existing database.
+
+> renfield> mysqldump....
+
+
 ### Launch instance
 
-1. amazon Linux 2, 64bit (x86) (free tier)
-1. t2.micro (free tier)
+https://aws.amazon.com/free/
+
+1. Log in to console.aws.amazon.com
+1. Select EC2 service
+1. Click "Launch Instance"
+1. Name: Renfield
+1. Quick Start:
+1.1 amazon Linux 2023, 64bit (x86) (free tier)
+1.1 t2.micro (free tier)
+1.1 Create/Select key pair
+1.1 Allow SSH from... My IP
 1. [ review and launch ]
 1. Launch
-1. existing key pair
 
 ### Allocate Elastic IP address
 
@@ -28,77 +43,45 @@ This is so that you can use the /speak command
 
 Log on with SSH to instance as ec2-user, with key pair
 
+https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/putty.html
+
+
+Upload scripts to /tmp
+
 > ec2-user> sudo -i
+> root> cd /tmp
+> root> wget https://github.com/mieow/renfieldbot/archive/refs/heads/master.zip
+> root> unzip master.zip
+> root> cd /tmp/renfieldbot-master/scripts/
+> root> chmod u+x setup.sh
+> root> chmod a+x renfield-setup.sh
 
-Install extra OS Packages
+Edit setupdatabase.sql to change the db password for the renfield db user
 
-> root> yum install libcurl-devel
-> root> yum install gcc
-> root> yum install -y openssl-devel
-> root> yum install python38
-> root> yum install python38-devel
-> root> yum install opus
+> root> vi setupdatabase.sql
 
-Update OS packages
-> root> yum update
+If migrating, replace the createtables.sql file with the database dump.
 
-Install ffmpeg
-https://www.maskaravivek.com/post/how-to-install-ffmpeg-on-ec2-running-amazon-linux/
+> root> scp <old>:/tmp/dump.sql /tmp/renfieldbot-master/scripts/createtables.sql
 
-Add renfield user
+Run the setup script:
 
-> root> adduser renfield
-> root> su - renfield
-> root> mkdir .ssh
-> root> chmod 700 .ssh
-> root> touch .ssh/authorized_keys
-> root> chmod 600 .ssh/authorized_keys
-> root> vi .ssh/authorized_keys
+> root> ./setup.sh
 
-Paste in renfield's public key
+### Setup database
 
-Start up MariaDB as a service
+Then secure the mariadb setup and set the database root password:
 
- https://techviewleo.com/how-to-install-mariadb-server-on-amazon-linux/
+> root> mariadb-secure-installation
+
+mariadb -u root -p < setupdatabase.sql
+mariadb -u renfield -p discordbot < createtables.sql
 
 
-Set up MariaDB MySQL Database
-> root> mysql -u root -p
+### Final setup
 
-> CREATE USER 'renfield'@'localhost' IDENTIFIED BY 'your_password_here';
-> CREATE DATABASE discordbot;
-> GRANT ALL PRIVILEGES ON *.* TO 'renfield'@'localhost';
-> SHOW GRANTS FOR 'renfield'@'localhost';
-> exit
-> root> mysql -u renfield -p discordbot
-...
-
-Install/Update python3
-
-> renfield> python3.8 -m pip install --upgrade pip
-> renfield> python3.8 -m pip install --upgrade setuptools
-> renfield> python3.8 -m pip list --outdated
-> renfield> python3.8 -m pip install --upgrade discord
-> renfield> python3.8 -m pip install --upgrade discord.py
-> renfield> python3.8 -m pip install --upgrade mysql-connector-python
-> renfield> python3.8 -m pip install --upgrade tabulate
-> renfield> python3.8 -m pip install --upgrade python-dotenv
-> renfield> python3.8 -m pip install --upgrade discord-py-interactions
-> renfield> python3.8 -m pip install --upgrade discord-py-slash-command
-> renfield> python3.8 -m pip install --upgrade certifi
-> renfield> python3.8 -m pip install cryptography
-> renfield> python3.8 -m pip install boto3
-> renfield> python3.8 -m pip install opuslib
-> renfield> python3.8 -m pip install discord.py[voice]
-> renfield> python3.8 -m pip install --upgrade <module>
-> renfield> python3.8 -m pip install --upgrade pycurl
-> renfield> python3.8 -m pip install --upgrade pytz
-
-set up directory structure
-
-
-upload python files
-
+setup service
+setup .env file
 
 
 # Invite the bot to your server
