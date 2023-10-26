@@ -21,3 +21,16 @@ python3 -m pip install --upgrade awscli
 cd
 mkdir logs
 cp -r /tmp/renfieldbot-master/discord .
+
+chmod u+x discord/bot.py
+
+mkdir /home/renfield/.aws
+cat <<EOF > /home/renfield/.aws/config
+[default]
+region=us-east-1
+EOF
+cat <<EOF > /home/renfield/.aws/credentials
+[default]
+aws_access_key_id = 
+aws_secret_access_key = 
+EOF

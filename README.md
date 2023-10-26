@@ -76,6 +76,9 @@ Edit the /home/renfield/.env file with your discord bot information
 
 Edit the /home/renfield/.aws/credentials file with your aws polly credentials
 
+systemctl start renfield
+systemctl status renfield
+
 # Invite the bot to your server
 
 https://discord.com/api/oauth2/authorize?client_id=690906493742088242&permissions=1099511630848&scope=bot%20applications.commands

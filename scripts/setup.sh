@@ -40,8 +40,8 @@ CREATE USER 'renfield'@'localhost' IDENTIFIED BY '${renfieldpass}';
 FLUSH PRIVILEGES;
 EOF
 
-mariadb -u root -p${rootpass} < setupdatabase.sql
-mariadb -u renfield -p${renfieldpass} discordbot < createtables.sql
+mariadb -u root -p${rootpass} < /tmp/renfieldbot-master/scripts/setupdatabase.sql
+mariadb -u renfield -p${renfieldpass} discordbot < /tmp/renfieldbot-master/scripts/createtables.sql
 
 su - renfield -c "/tmp/renfieldbot-master/scripts/renfield-setup.sh"
 
@@ -59,20 +59,8 @@ EOF
 cp env.txt /home/renfield/.env
 chown renfield /home/renfield/.env
 
-mkdir /home/renfield/.aws
-cat <<EOF > /home/renfield/.aws/config
-[default]
-region=us-east-1
-EOF
-cat <<EOF > /home/renfield/.aws/credentials
-
-[default]
-aws_access_key_id = 
-aws_secret_access_key = 
-EOF
-chown -R renfield /home/renfield/.aws
 
 cp /tmp/renfieldbot-master/scripts/renfield.service /etc/systemd/system
-systemctl start renfield
 systemctl enable renfield
-systemctl status renfield
+
+echo "Setup Complete"
