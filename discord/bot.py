@@ -5,22 +5,21 @@ import mysql.connector
 import discord
 import logging
 import logging.handlers
-import wordpress_api
-import renfield_sql
+import cogs.wordpress_api
+#import renfield_sql
 import asyncio
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 from discord.ext import commands
 from discord import app_commands
-from common import write_key, get_log_channel
+from common import write_key
 from datetime import datetime, date
+from renfield_sql import get_bot_setting, save_bot_setting, get_log_channel
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD = os.getenv('DISCORD_GUILD')
 GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
-DATABASE_USERNAME = os.getenv('DATABASE_USERNAME')
-DATABASE_PASSWORD = os.getenv('DATABASE_PASSWORD')
 LOG_HOME = os.getenv('LOG_HOME')
 DISCORDLOG = LOG_HOME + '/discord.log'
 OWNER = os.getenv('LOG_HOME')
@@ -93,7 +92,12 @@ async def on_ready():
 	print('Bot User Name: ' + bot.user.name)
 	print('Running with discord.py version: ' + discord.__version__)
 	# create encryption key, if needed
-	print('Encrypyion Key Generation: ' + write_key())
+	print('Encryption Key Generation: ' + write_key())
+	print('---------------------------------------------')
+	print('Environment:')
+	config = dotenv_values(".env")
+	for env in config:
+		print ("    " + env + " : " + os.getenv(env))
 	print('---------------------------------------------')
 	print('Renfield is at your service!')
 	#await bot.tree.sync()
@@ -108,36 +112,33 @@ async def hello(ctx):
 	author = ctx.user.name
 	nameid = ctx.user.id
 	server = ctx.guild.name
-	mydb = renfield_sql.renfield_sql()
 	
 	dt = datetime.now()
 	ts = datetime.timestamp(dt)
-	lastupdated = float(mydb.get_bot_setting("last_updated_words", 0, "None"))
+	lastupdated = float(get_bot_setting("last_updated_words", "None", 0))
 	lastupdateddt = date.fromtimestamp(lastupdated)
-
 	if lastupdateddt.strftime("%m-%Y") == dt.strftime("%m-%Y"):
-		current = int(mydb.get_bot_setting("current_words", 0, "None"))
+		current = int(get_bot_setting("current_words", "None", 0))
 	else:
 		current = 0
-		mydb.save_bot_setting("current_words", current, "None")
-
+		save_bot_setting("current_words", "None", current)
 	
-	wordpress_site = mydb.get_bot_setting("wordpress_site", "none", server)
-	voice = mydb.get_bot_setting("polly_voice", "Brian", server)
+	wordpress_site = get_bot_setting("wordpress_site", server)
+	voice = get_bot_setting("polly_voice", server)
 	limit = int(os.getenv('POLLY_WORD_LIMIT'))
 	
 	message = 'Yes, Master {}, I am at your command!\n\nThis is the "{}" guild server. I speak with the AWS Polly voice called {}.'.format(author,server, voice)
 	message = message + 'I have used {} out of my available {} AWS Polly words this month.\n\n'.format(current, limit)
-	message = message + 'Name of Storyteller admin role: {}\n'.format(mydb.get_bot_setting("admin_role", "Storytellers", server))
+	message = message + 'Name of Storyteller admin role: {}\n'.format(get_bot_setting("admin_role", server))
 	message = message + 'Wordpress site: {}\n\n'.format(wordpress_site)
-	
+
 	if wordpress_site != "none":
-		if wordpress_api.curl_checkAPI(server):
+		if cogs.wordpress_api.curl_checkAPI(server):
 			message = message + "I have failed to connect to the {} Wordpress site".format(wordpress_site)
 		else:
 			message = message + "I have successfully connected to the Wordpress site. Users can get the application password they need to link their account from here: {}/wp-admin/authorize-application.php?app_name=Renfield.".format(wordpress_site)
 	
-	
+
 	await ctx.response.send_message(message)
 
 @bot.tree.command(name='debug', description='Toggle debug mode')
@@ -183,10 +184,7 @@ async def on_voice_state_update(member, before, after):
 	logchannel = get_log_channel(server)
 	
 	try:
-		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
-		log_voice_channel = mydb.get_bot_setting("voice-activity", "off", server.name)
-		mydb.disconnect()
+		log_voice_channel = get_bot_setting("voice-activity", server.name)
 	except Exception as e:
 		print(e)
 	
@@ -224,12 +222,12 @@ async def main():
 	logger.addHandler(handler)
 	
 	async with bot:
-		await bot.load_extension("cogs/events")
-		await bot.load_extension("cogs/niceness")
-		await bot.load_extension("cogs/diceroller")
-		await bot.load_extension("cogs/settings")
-		await bot.load_extension("cogs/wordpress_api")
-		await bot.load_extension("cogs/voice")
+		await bot.load_extension("cogs.events")
+		await bot.load_extension("cogs.niceness")
+		await bot.load_extension("cogs.diceroller")
+		await bot.load_extension("cogs.settings")
+		await bot.load_extension("cogs.wordpress_api")
+		await bot.load_extension("cogs.voice")
 		await bot.start(TOKEN)
 
 if __name__ == '__main__':

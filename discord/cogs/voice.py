@@ -4,7 +4,7 @@ from discord.utils import get
 from dotenv import load_dotenv
 from discord import Embed, app_commands
 from datetime import datetime, date
-import renfield_sql
+from renfield_sql import save_bot_setting, get_bot_setting
 import nacl
 import asyncio
 import botocore
@@ -18,7 +18,6 @@ import subprocess
 from tempfile import gettempdir, mkstemp
 
 load_dotenv()
-GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
 
 # Create a client using the credentials and region defined in the [adminuser]
 # section of the AWS credentials file (~/.aws/credentials).
@@ -37,8 +36,7 @@ class Voice(commands.Cog):
 	)
 	async def speak(self, ctx, channel: discord.VoiceChannel, text: str):
 		server = ctx.guild
-		mydb = renfield_sql.renfield_sql()
-		myvoice = mydb.get_bot_setting("polly_voice", "Brian", server.name)
+		myvoice = get_bot_setting("polly_voice", server.name)
 	
 		# Verify voice channel exists
 		found = 0
@@ -74,9 +72,9 @@ class Voice(commands.Cog):
 			withinlimit = 0
 			try:
 		
-				current = int(mydb.get_bot_setting("current_words", 0, "None"))
+				current = int(get_bot_setting("current_words", "None", 0))
 				limit = int(os.getenv('POLLY_WORD_LIMIT'))
-				lastupdated = float(mydb.get_bot_setting("last_updated_words", 0, "None"))
+				lastupdated = float(get_bot_setting("last_updated_words", "None", 0))
 				lastupdateddt = date.fromtimestamp(lastupdated)
 				count = len(text.split())
 				
@@ -102,8 +100,8 @@ class Voice(commands.Cog):
 					mp3ok = 1
 					
 					# save monthly speech count
-					mydb.save_bot_setting("current_words", total, "None")
-					mydb.save_bot_setting("last_updated_words", ts, "None")
+					save_bot_setting("current_words", total, "None")
+					save_bot_setting("last_updated_words", ts, "None")
 					
 				except botocore.exceptions.ClientError as error:
 					#An error occurred (ValidationException) when calling the SynthesizeSpeech operation: This voice does not support the selected engine: standard

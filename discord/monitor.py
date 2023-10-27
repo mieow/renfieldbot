@@ -9,7 +9,6 @@ from tabulate import tabulate
 from dotenv import load_dotenv
 
 load_dotenv()
-LOG_HOME = os.getenv('LOG_HOME')
 HOMEGUILD = os.getenv('DISCORD_GUILD')
 	
 class Monitor(commands.Cog):

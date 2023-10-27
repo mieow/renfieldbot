@@ -3,8 +3,8 @@ import discord
 import pprint
 from discord.ext import commands
 from discord import Embed, app_commands
-from common import check_is_auth, check_restapi_active
-from wordpress_api import get_my_character, get_character, is_storyteller
+from cogs.wordpress_api import get_my_character, get_character, is_storyteller
+from renfield_sql import check_is_auth, check_restapi_active
 
 # SUCCESSES - BOLD
 # 10S - ITALIC
@@ -135,7 +135,7 @@ class DiceRoller(commands.Cog):
 					rolls = dice(get_level_from_character(charinfo["result"], attribute, "attributes"))
 					rolling.append(attribute)
 					
-					if ability != "none":
+					if ability != "None":
 						level = get_level_from_character(charinfo["result"], ability, "abilities")
 						if level > 0:
 							rolls = rolls + dice(level)
@@ -173,7 +173,10 @@ class DiceRoller(commands.Cog):
 			try:
 				rolls = dice(dicepool)
 				str = formatdice(rolls)
-				await ctx.response.send_message("Master {}, I have made a '{}' roll for you: ".format(author, note) + str)
+				if note == "":
+					await ctx.response.send_message("Master {}, I have made a roll for you: ".format(author, note) + str)
+				else:
+					await ctx.response.send_message("Master {}, I have made a '{}' roll for you: ".format(author, note) + str)
 			except Exception as e:
 				print('Renfield is confused')
 				print(e)
@@ -227,8 +230,8 @@ def get_level_from_character(characterdata, item: str, category: str = "all"):
 						return int(info["level"])
 					elif "skillname" in info and info["skillname"] == item:
 						return int(info["level"])
-					elif "background" in info and info["background"] == item:
-						return int(info["level"])
+					# elif "background" in info and info["background"] == item:
+						# return int(info["level"])
 		
 		return 0
 

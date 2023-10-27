@@ -1,11 +1,9 @@
 import discord
 import mysql.connector
-import renfield_sql
+from renfield_sql import check_is_auth, get_nice, renfield_sql
 from discord.ext import commands
 from tabulate import tabulate
-from common import check_is_auth
 from discord import app_commands
-
 
 class Compliments(commands.Cog):
 	def __init__(self, bot):
@@ -24,7 +22,7 @@ class Compliments(commands.Cog):
 	@app_commands.describe(compliment="Text of compliment to add")
 	async def addnice(self, ctx, *, compliment: str):
 
-		mydb = renfield_sql.renfield_sql()
+		mydb = renfield_sql()
 		mycursor = mydb.connect()
 		server = ctx.guild.name
 		try:
@@ -47,7 +45,7 @@ class Compliments(commands.Cog):
 	@app_commands.command(name='listnice', description='List all the compliments')
 	async def listnice(self, ctx):
 		try:
-			mydb = renfield_sql.renfield_sql()
+			mydb = renfield_sql()
 			mycursor = mydb.connect()
 			server = ctx.guild.name
 		except Exception as e:
@@ -82,9 +80,7 @@ class Compliments(commands.Cog):
 	@app_commands.command(name='deletenice', description='Delete a compliments')
 	@app_commands.describe(id="Compliment ID")
 	async def deletenice(self, ctx, id: int):
-		#mydb = self.bot.db
-		#mycursor = mydb.cursor()
-		mydb = renfield_sql.renfield_sql()
+		mydb = renfield_sql()
 		mycursor = mydb.connect()
 		server = ctx.guild.name
 		try:
@@ -107,10 +103,9 @@ class Compliments(commands.Cog):
 
 	@app_commands.command(name='nice', description='Get a compliment')
 	async def nice(self, ctx):
-		mydb = renfield_sql.renfield_sql()
 		server = ctx.guild.name
 		author = ctx.user.display_name
-		nice = mydb.get_nice(server)
+		nice = get_nice(server)
 		await ctx.response.send_message("Master {}. {}".format(author,nice))
 
 async def setup(bot):

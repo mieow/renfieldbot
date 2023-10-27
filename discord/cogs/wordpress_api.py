@@ -4,8 +4,7 @@ from discord.utils import get
 import mysql.connector
 import os
 from tabulate import tabulate
-import renfield_sql
-from common import check_is_auth, check_restapi_active
+from renfield_sql import get_bot_setting, renfield_sql, check_is_auth, check_restapi_active, get_link, save_link, add_member, get_wordpress_id
 # from interactions import cog_ext, SlashContext
 # from interactions.utils.manage_commands import create_option, create_choice
 from discord import Embed, app_commands
@@ -20,9 +19,6 @@ import urllib.parse
 import pprint
 
 # https://developer.wordpress.org/rest-api/extending-the-rest-api/adding-custom-endpoints/
-
-load_dotenv()
-GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
 
 	
 class WordPressAPI(commands.Cog):
@@ -40,20 +36,18 @@ class WordPressAPI(commands.Cog):
 	@app_commands.command(name="link", description="Link Discord Account to Wordpress Account")
 	@app_commands.describe(
 		wordpress_id="Wordpress Login Name",
-		wordpress_secret="Wordpress Account Secret"
+		wordpress_secret="Wordpress Application Password"
 	)
 	async def link(self, ctx, wordpress_id: str, wordpress_secret: str):
-		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
 		author = ctx.user.display_name
 		nameid = ctx.user.id
 		server = ctx.guild.name
-		wordpress_site = mydb.get_bot_setting("wordpress_site", "none", server)
+		wordpress_site = get_bot_setting("wordpress_site", server)
 		
 		if wordpress_site == "none":
 			await ctx.response.send_message("I'm sorry Master, This Discord server has not been linked to a Wordpress Site")
 		else:
-			status = mydb.save_link(nameid, wordpress_id, wordpress_secret, server)
+			status = save_link(nameid, wordpress_id, wordpress_secret, server)
 			if status:
 				# check link
 				wpinfo = curl_get_me(nameid, server)
@@ -85,7 +79,7 @@ class WordPressAPI(commands.Cog):
 						#pprint.pprint(charinfo)
 						
 						# add/update Player Name in member table
-						memberinfo = mydb.add_member(nameid, charinfo["result"]["player"], server)
+						memberinfo = add_member(nameid, charinfo["result"]["player"], server)
 						
 						# set nickname (but not for the server owners or admins)
 						if ctx.guild.me.guild_permissions.manage_nicknames:
@@ -180,11 +174,10 @@ def curl_checkAPI(server):
 
 # Function to run curl GET
 def curl_get(endpoint, server, nameid: str=""):
-	mydb = renfield_sql.renfield_sql()
-	wordpress_site = mydb.get_bot_setting("wordpress_site", "none", server)
+	wordpress_site = get_bot_setting("wordpress_site", server)
 	
 	if nameid != "":
-		info = mydb.get_link(nameid, server)
+		info = get_link(nameid, server)
 		if info["wordpress_id"] == "":
 			result = {}
 			result["code"] = "account_not_linked"
@@ -245,9 +238,7 @@ def curl_get_me(nameid, server):
 	return result
 
 def get_my_character(nameid: str, server: str):
-		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
-		wordpress_site = mydb.get_bot_setting("wordpress_site", "none", server)
+		wordpress_site = get_bot_setting("wordpress_site", server)
 		
 		characterinfo = {}
 		if wordpress_site == "none":
@@ -295,9 +286,7 @@ def get_my_character(nameid: str, server: str):
 		return characterinfo
 
 def get_character(server: str, nameid: str, character: str):
-		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
-		wordpress_site = mydb.get_bot_setting("wordpress_site", "none", server)
+		wordpress_site = get_bot_setting("wordpress_site", server)
 		
 		characterinfo = {}
 		if wordpress_site == "none":
@@ -339,7 +328,7 @@ def get_character(server: str, nameid: str, character: str):
 			character = character.replace(">","")
 			
 			if character.isnumeric():
-				wordpress_id = mydb.get_wordpress_id(character, server)
+				wordpress_id = get_wordpress_id(character, server)
 				if wordpress_id:
 					# now we have the wp ID, we can query for the character
 					uri = "wp-json/vampire-character/v1/character/wpid?wordpress_id={}".format(urllib.parse.quote(wordpress_id))

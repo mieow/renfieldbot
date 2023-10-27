@@ -2,15 +2,12 @@ import discord
 from discord.ext import commands
 import mysql.connector
 import os
-from common import check_is_auth
 from tabulate import tabulate
-import renfield_sql
+from renfield_sql import get_bot_setting, save_bot_setting, check_is_auth
 from discord import Embed, app_commands
 from dotenv import load_dotenv
 
 load_dotenv()
-GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
-
 	
 class Settings(commands.Cog):
 	def __init__(self, bot):
@@ -38,26 +35,23 @@ class Settings(commands.Cog):
 		app_commands.Choice(name="Set default finish time for events (HH:MM) in UTC", value="event_end"),
 		app_commands.Choice(name="Set default description time for events", value="event_desc"),
 		app_commands.Choice(name="Set text channel for bot logging", value="cubby-hole"),
-		app_commands.Choice(name="Enable voice channel activity logging (on/off)", value="voice-activity")
+		app_commands.Choice(name="Enable voice channel activity logging (on/off)", value="voice-activity"),
+		app_commands.Choice(name="List all settings", value="list-all")
 	])
-	async def _config(self, ctx, setting_name: str, setting_value: str):
-		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
+	async def _config(self, ctx, setting_name: str, setting_value: str = ""):
 		author = ctx.user.display_name
 		server = ctx.guild.name
 		
 		#available settings
-		settings = ['admin_role', 'voice-activity', 'cubby-hole', 'wordpress_site', 'polly_voice', 'event_location', 'event_start', 'event_end', 'event_desc']
+		settings = ['list-all', 'admin_role', 'voice-activity', 'cubby-hole', 'wordpress_site', 'polly_voice', 'event_location', 'event_start', 'event_end', 'event_desc']
 		voices = ["Jan", "Aditi ", "Amy  ", "Astrid", "Bianca", "Brian", "Camila", "Carla", "Carmen", "Céline/Celine", "Chantal", "Conchita", "Cristiano", "Dóra/Dora", "Emma", "Enrique", "Ewa", "Filiz", "Geraint", "Giorgio", "Gwyneth", "Hans", "Inês/Ines", "Ivy", "Jacek", "Joanna  ", "Joey", "Justin", "Karl", "Kendra", "Kimberly", "Léa", "Liv", "Lotte", "Lucia", "Lupe  ", "Mads", "Maja", "Marlene", "Mathieu", "Matthew  ", "Maxim", "Mia", "Miguel", "Mizuki", "Naja", "Nicole", "Penélope/Penelope", "Raveena", "Ricardo", "Ruben", "Russell", "Salli", "Seoyeon", "Takumi", "Tatyana", "Vicki", "Vitória/Vitoria", "Zeina", "Zhiyu"]
 		rows = []
 				
-		if setting_name == '':
+		if setting_name == 'list-all':
 			headers = ["Name", "Setting"]
 			for setting_name in settings:
 			
-				default = os.getenv('DEFAULT_{}'.format(setting_name).upper())
-
-				setting_value = mydb.get_bot_setting(setting_name, default, server)
+				setting_value = get_bot_setting(setting_name, server)
 				rows.append([setting_name, setting_value])
 									
 			table = tabulate(rows, headers)
@@ -65,7 +59,9 @@ class Settings(commands.Cog):
 
 		elif (setting_name in settings):
 			if setting_value == "":
-				await ctx.response.send_message("Master, please specify a value for setting {}.".format(setting_name))
+				default = os.getenv('DEFAULT_{}'.format(setting_name).upper())
+				save_bot_setting(setting_name, default, server)
+				await ctx.response.send_message("Master, reset {} setting to the default '{}'.".format(setting_name, default))
 			else:
 				ok = 1
 				# Verify AWS Polly choices
@@ -75,7 +71,7 @@ class Settings(commands.Cog):
 						await ctx.response.send_message("Voice {} is not in the available list of Standard  Voice options. Choose from {}. More info here: https://docs.aws.amazon.com/polly/latest/dg/voicelist.html".format(setting_value, ", ".join(voices)))
 				
 				if ok:
-					ok = mydb.save_bot_setting(setting_name, setting_value, server)
+					ok = save_bot_setting(setting_name, setting_value, server)
 					if ok:
 						await ctx.response.send_message("Setting {} saved with value {}".format(setting_name, setting_value))
 					else:

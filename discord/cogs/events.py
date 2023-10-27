@@ -4,19 +4,12 @@ from tabulate import tabulate
 import mysql.connector
 from datetime import date
 from datetime import datetime, timezone
-import renfield_sql
-from common import check_is_auth, get_log_channel
-# from discord_slash import cog_ext, SlashContext
-# from discord_slash.utils.manage_commands import create_option, create_choice
+from renfield_sql import check_is_auth, get_log_channel, update_event, get_nice, add_member, renfield_sql, get_bot_setting
 from discord import Embed, app_commands
 from dotenv import load_dotenv
 import os
 import pytz
 from tempfile import gettempdir, mkstemp
-
-load_dotenv()
-GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
-
 
 class Events(commands.Cog):
 	def __init__(self, bot):
@@ -34,7 +27,7 @@ class Events(commands.Cog):
 	async def on_scheduled_event_create(self, event):
 		server = event.guild
 		name = event.name
-		mydb = renfield_sql.renfield_sql()
+		mydb = renfield_sql()
 		mycursor = mydb.connect()
 		logchannel = get_log_channel(server)
 		
@@ -74,7 +67,7 @@ class Events(commands.Cog):
 		server = event.guild
 		logchannel = get_log_channel(server)
 		
-		mydb = renfield_sql.renfield_sql()
+		mydb = renfield_sql()
 		mycursor = mydb.connect()
 		guild = event.guild.name
 		name = event.name
@@ -126,10 +119,8 @@ class Events(commands.Cog):
 	async def on_scheduled_event_update(self, before, after):
 		server = before.guild
 
-		mydb = renfield_sql.renfield_sql()
-
 		logchannel = get_log_channel(server)
-		log_voice_channel = mydb.get_bot_setting("voice-activity", "off", server.name)
+		log_voice_channel = get_bot_setting("voice-activity", server.name)
 		message = ""
 		
 		# Update the event name, if it has changed
@@ -143,7 +134,7 @@ class Events(commands.Cog):
 			message = message + "Event '{}' start changed to {} (GMT/UTC). ".format(after.name, after.start_time)
 
 		if doupdate:
-			result = mydb.update_event(before.name, after.name, after.start_time, server.name)
+			result = update_event(before.name, after.name, after.start_time, server.name)
 			if result:
 				message = message + "Event has been updated in the database."
 			else:
@@ -158,7 +149,6 @@ class Events(commands.Cog):
 	@app_commands.command(name='signin', description='Sign In to the event')
 	@app_commands.describe(player="Name of the player (not the character name)")
 	async def signin(self, ctx, player: str=""):
-		mydb = renfield_sql.renfield_sql()
 
 		author = ctx.user.display_name
 		nameid = ctx.user.id
@@ -167,11 +157,12 @@ class Events(commands.Cog):
 		if player != "" and (author.lower() in player.lower() or player.lower() in author.lower()):
 			await ctx.send("Wow, Master. That's so weird that your Discord nickname '{}' and your player name '{}' are so similar!".format(author, player))	
 		
-		memberinfo = mydb.add_member(nameid, player, server)
+		memberinfo = add_member(nameid, player, server)
 		member_id = memberinfo["member_id"]
 		if memberinfo["message"] != "":
 			await ctx.response.send_message(memberinfo["message"])
-
+			
+		mydb = renfield_sql()
 		mycursor = mydb.connect()
 		if member_id > 0:
 			
@@ -219,12 +210,14 @@ class Events(commands.Cog):
 						print(e)
 						textreply = 'I\'m sorry, Master, I was unable to record your attendance.'
 				
+					mydb.disconnect()
+				
 			
 				else:
 					textreply = "I see that you have already signed in to this event, Master."
 
 				if signedin == 1:
-					nice = mydb.get_nice(server)
+					nice = get_nice(server)
 					await ctx.response.send_message("{} I have to say... {}".format(textreply, nice))
 
 			elif isevent == -1:
@@ -234,7 +227,6 @@ class Events(commands.Cog):
 				await ctx.response.send_message('I\'m sorry Master {}, there is no event currently in progress'.format(author))
 		else:
 			await ctx.response.send_message('I\'m sorry Master {}, your membership has not been confirmed'.format(author))
-		mydb.disconnect()
 		
 
 	@check_is_auth()
@@ -244,15 +236,13 @@ class Events(commands.Cog):
 		eventdate="Event date (DD/MM/YYYY)",
 	)
 	async def addevent(self, ctx, eventname: str, eventdate: str):
-		mydb = renfield_sql.renfield_sql()
-		mycursor = mydb.connect()
 		author = ctx.user.display_name
 		server = ctx.guild
 		
-		starttime = mydb.get_bot_setting("event_start", "18:00", server.name)
-		endtime = mydb.get_bot_setting("event_end", "23:00", server.name)
-		description = mydb.get_bot_setting("event_desc", "[No description]", server.name)
-		location = mydb.get_bot_setting("event_location", "[No location]", server.name)
+		starttime = get_bot_setting("event_start", server.name)
+		endtime = get_bot_setting("event_end", server.name)
+		description = get_bot_setting("event_desc", server.name)
+		location = get_bot_setting("event_location", server.name)
 		
 		startdatetime = '{} {}'.format(eventdate, starttime)		
 		startdateok = 0
@@ -290,6 +280,7 @@ class Events(commands.Cog):
 				startdateok = 0
 				
 			# check event doesn't already exist
+			mydb = renfield_sql()
 			mycursor = mydb.connect()
 			isduplicate = 1
 			try:
@@ -330,74 +321,7 @@ class Events(commands.Cog):
 				else:
 					await ctx.response.send_message('I\'m sorry, Master, I do not have permission to manage events.')
 
-	# @signin.error
-	# async def signin_error(ctx, error):
-		# if isinstance(error, commands.MissingRequiredArgument):
-			# await ctx.send("I'm sorry Master, Who should I say is attending the event?")
 
-	# @app_commands.command(name='new', description='Schedule a new LARP event')
-	# @app_commands.describe(
-		# eventname="Name of the event",
-		# date="Event date (DD/MM/YYYY)",
-		# time="Optional Start time (06:00pm default)"
-	# )
-	# @check_is_auth()
-	# async def new(self, ctx, eventname: str, date: str, time: str='06:00pm'):
-		# mydb = renfield_sql.renfield_sql()
-		# mycursor = mydb.connect()
-		# author = ctx.user.display_name
-		# server = ctx.guild.name
-		# date_time = '{} {}'.format(date, time)
-		
-		# # Check if user is allowed to use this command
-		# admin_role = mydb.get_bot_setting("admin_role", "storytellers", server)
-		# has_admin_role = (admin_role.lower() in [y.name.lower() for y in ctx.user.roles])
-		# if not (ctx.user.guild_permissions.administrator or has_admin_role):
-			# await ctx.response.send_message('I\'m sorry, Master, you do not have the authority to ask me to do that')
-			# return
-		
-		# # add to database
-		# dateok = 0
-		# try:
-			# event_date = datetime.strptime(date_time, '%d/%m/%Y %I:%M%p')
-			# dateok = 1
-		# except Exception as e:
-			# await ctx.response.send_message('I\'m sorry, Master, the format of the date and optional time is DD/MM/YYYY [08:00pm]')
-			# print(e)
-		
-		# if dateok:
-			# # check that event is not in the past
-			# present = datetime.now()
-			# if event_date.date() < present.date():
-				# await ctx.response.send_message('I\'m sorry, Master, event date you have specified is in the past.')
-				# dateok = 0
-			
-			# # check event doesn't already exist
-			# mycursor = mydb.connect()
-			# isduplicate = 1
-			# try:
-				# sql = "SELECT COUNT(id) FROM events WHERE name = %s"
-				# mycursor.execute(sql, (eventname,))
-				# out = mycursor.fetchall()
-				# isduplicate = out[0][0]
-			# except Exception as e:
-				# await ctx.response.send_message('I\'m sorry, Master, I could not check if an event already exists with this name.')
-				# print(e)
-			
-			# if isduplicate:
-				# await ctx.response.send_message('I\'m sorry, Master, I already have an event with this name.')
-			
-			# if dateok and isduplicate == 0:
-				# try:
-					# sql = "INSERT INTO events (name, server, eventdate) VALUES (%s, %s, %s)"
-					# val = (eventname, server, event_date)
-					# mycursor.execute(sql, val)
-					# mydb.commit()
-					# await ctx.response.send_message('Thank you Master {}, I have recorded the {} event in the diary for {}'.format(author, eventname, event_date))
-				# except Exception as e:
-					# await ctx.response.send_message('I\'m sorry, Master, I could not complete your command')
-					# print(e)
-		# mydb.disconnect()
 
 	async def cog_command_error(self, ctx, error):
 		if isinstance(error, commands.MissingRequiredArgument):
@@ -411,7 +335,7 @@ class Events(commands.Cog):
 			example: .list
 		'''
 
-		mydb = renfield_sql.renfield_sql()
+		mydb = renfield_sql()
 		mycursor = mydb.connect()
 		author = ctx.user.display_name
 		nameid = ctx.user.id
@@ -486,7 +410,7 @@ class Events(commands.Cog):
 	)
 	async def attendance(self, ctx, event: str):
 
-		mydb = renfield_sql.renfield_sql()
+		mydb = renfield_sql()
 		mycursor = mydb.connect()
 		author = ctx.user.display_name
 		nameid = ctx.user.id
@@ -540,7 +464,7 @@ class Events(commands.Cog):
 		name="Event name to delete",
 	)
 	async def delete(self, ctx, name: str):
-		mydb = renfield_sql.renfield_sql()
+		mydb = renfield_sql()
 		mycursor = mydb.connect()
 		author = ctx.user.display_name
 		guild = ctx.guild.name
@@ -582,14 +506,6 @@ class Events(commands.Cog):
 		#	await ctx.response.send_message('I\'m sorry, Master {}, the {} event does not exist'.format(author, name))	
 		mydb.disconnect()
 
-	# # @delete.error
-	# # async def delete_error(ctx, error):
-		# # if isinstance(error, commands.MissingRequiredArgument):
-			# # await ctx.send("I'm sorry Master, I need more information. Can you tell me the {} of the event?".format(error.param.name))
-
-	# async def cog_command_error(self, ctx, error):
-		# if isinstance(error, commands.MissingRequiredArgument):
-			# await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
 
 
 async def setup(bot):
