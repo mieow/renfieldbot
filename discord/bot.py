@@ -224,12 +224,12 @@ async def main():
 	logger.addHandler(handler)
 	
 	async with bot:
-		await bot.load_extension("events")
-		await bot.load_extension("niceness")
-		await bot.load_extension("diceroller")
-		await bot.load_extension("settings")
-		await bot.load_extension("wordpress_api")
-		await bot.load_extension("voice")
+		await bot.load_extension("cogs/events")
+		await bot.load_extension("cogs/niceness")
+		await bot.load_extension("cogs/diceroller")
+		await bot.load_extension("cogs/settings")
+		await bot.load_extension("cogs/wordpress_api")
+		await bot.load_extension("cogs/voice")
 		await bot.start(TOKEN)
 
 if __name__ == '__main__':
