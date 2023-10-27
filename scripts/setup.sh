@@ -2,6 +2,9 @@
 
 rootpass="widurncourygb"
 renfieldpass="awdivuyhaefvyer"
+discord_token="your_discord_token"
+guild_name="your_discord_guild_name"
+guild_id="your_discord_guild_id"
 
 yum update
 
@@ -46,14 +49,24 @@ mariadb -u renfield -p${renfieldpass} discordbot < /tmp/renfieldbot-master/scrip
 su - renfield -c "/tmp/renfieldbot-master/scripts/renfield-setup.sh"
 
 cat <<EOF > env.txt
-DISCORD_TOKEN=your_token_here
-DISCORD_GUILD="your_guild_name"
-DISCORD_GUILD_ID=your_guilf_id
+DISCORD_TOKEN=${discord_token}
+DISCORD_GUILD="${guild_name}"
+DISCORD_GUILD_ID=${guild_id}
 DATABASE_USERNAME="renfield"
 DATABASE_PASSWORD="${renfieldpass}"
 LOG_HOME="/home/renfield/logs"
 OWNER=581081113263472643
 POLLY_WORD_LIMIT=1000000
+
+DEFAULT_ADMIN_ROLE="Storytellers"
+DEFAULT_WORDPRESS_SITE="none"
+DEFAULT_POLLY_VOICE="Brian"
+DEFAULT_VOICE-ACTIVITY="off"
+DEFAULT_CUBBY-HOLE="renfields-cubby-hole"
+DEFAULT_EVENT_START="18:00"
+DEFAULT_EVENT_END="23:00"
+DEFAULT_EVENT_DESC="[No description]"
+DEFAULT_LOCATION="[No location]"
 EOF
 
 cp env.txt /home/renfield/.env

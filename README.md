@@ -11,6 +11,9 @@ If you are migrating the bot to another server instance, you should first take a
 
 > renfield> mariadb-dump discordbot -p > /tmp/dump.sql
 
+Also take a download of the encryption key, or everyone will need to re-link their characters again.
+
+> renfield> ls /home/renfield/.wp_key
 
 ### Launch instance
 
@@ -59,9 +62,17 @@ Upload scripts to /tmp
 
 If migrating, replace the createtables.sql file with the database dump.
 
-> root> scp <old>:/tmp/dump.sql /tmp/renfieldbot-master/scripts/createtables.sql
+> root> cd /tmp/renfieldbot-master/scripts/
+> root> mv createtables.sql createtables.sql.bak
+> root> mv /tmp/dump.sql createtables.sql
 
-Edit the setup script with the root and renfield database password:
+Edit the setup script with the database passwords and Discord information you want to use:
+
+rootpass="widurncourygb"
+renfieldpass="awdivuyhaefvyer"
+discord_token="your_discord_token"
+guild_name="your_discord_guild_name"
+guild_id="your_discord_guild_id"
 
 > root> vi setup.sh
 
@@ -75,6 +86,8 @@ Run the setup script:
 Edit the /home/renfield/.env file with your discord bot information
 
 Edit the /home/renfield/.aws/credentials file with your aws polly credentials
+
+Migrations: upload the encryption key to /home/renfield/.wp_key
 
 systemctl start renfield
 systemctl status renfield
