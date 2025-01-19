@@ -18,11 +18,11 @@ from renfield_sql import get_bot_setting, save_bot_setting, get_log_channel
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-GUILD = os.getenv('DISCORD_GUILD')
-GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
+#GUILD = os.getenv('DISCORD_GUILD')
+#GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
 LOG_HOME = os.getenv('LOG_HOME')
 DISCORDLOG = LOG_HOME + '/discord.log'
-OWNER = os.getenv('LOG_HOME')
+#OWNER = os.getenv('LOG_HOME')
 
 
 # BUGS
@@ -70,7 +70,7 @@ OWNER = os.getenv('LOG_HOME')
 #			# do stuff here #
 
 
-handler = logging.FileHandler(filename=DISCORDLOG, encoding='utf-8', mode='w')
+#handler = logging.FileHandler(filename=DISCORDLOG, encoding='utf-8', mode='w')
 
 intents = discord.Intents.default()
 intents.members = True
@@ -81,7 +81,7 @@ bot = commands.Bot(
 	command_prefix='.', 
 	description=description, 
 	intents=intents,
-	owner_ids=[OWNER]
+	#owner_ids=[OWNER]
 )
 
 # Connect to Discord when ready
@@ -92,7 +92,7 @@ async def on_ready():
 	print('Bot User Name: ' + bot.user.name)
 	print('Running with discord.py version: ' + discord.__version__)
 	# create encryption key, if needed
-	print('Encryption Key Generation: ' + write_key())
+	#print('Encryption Key Generation: ' + write_key())
 	print('---------------------------------------------')
 	print('Environment:')
 	config = dotenv_values(".env")
@@ -100,7 +100,6 @@ async def on_ready():
 		print ("    " + env + " : " + os.getenv(env))
 	print('---------------------------------------------')
 	print('Renfield is at your service!')
-	#await bot.tree.sync()
 
 # Ping the bot
 @bot.tree.command(
@@ -112,7 +111,7 @@ async def hello(ctx):
 	author = ctx.user.name
 	nameid = ctx.user.id
 	server = ctx.guild.name
-	
+
 	dt = datetime.now()
 	ts = datetime.timestamp(dt)
 	lastupdated = float(get_bot_setting("last_updated_words", "None", 0))
@@ -122,19 +121,20 @@ async def hello(ctx):
 	else:
 		current = 0
 		save_bot_setting("current_words", "None", current)
-	
+
 	wordpress_site = get_bot_setting("wordpress_site", server)
-	voice = get_bot_setting("polly_voice", server)
-	limit = int(os.getenv('POLLY_WORD_LIMIT'))
+	#voice = get_bot_setting("polly_voice", server)
+	#limit = int(os.getenv('POLLY_WORD_LIMIT'))
 	
-	message = 'Yes, Master {}, I am at your command!\n\nThis is the "{}" guild server. I speak with the AWS Polly voice called {}.'.format(author,server, voice)
-	message = message + 'I have used {} out of my available {} AWS Polly words this month.\n\n'.format(current, limit)
-	message = message + 'Name of Storyteller admin role: {}\n'.format(get_bot_setting("admin_role", server))
+	message = ""
+	#message = message + 'Yes, Master {}, I am at your command!\n\nThis is the "{}" guild server. I speak with the AWS Polly voice called {}.'.format(author,server, voice)
+	#message = message + 'I have used {} out of my available {} AWS Polly words this month.\n\n'.format(current, limit)
+	#message = message + 'Name of Storyteller admin role: {}\n'.format(get_bot_setting("admin_role", server))
 	message = message + 'Wordpress site: {}\n\n'.format(wordpress_site)
 
-	if wordpress_site != "none":
+	if wordpress_site or wordpress_site != "none":
 		if cogs.wordpress_api.curl_checkAPI(server):
-			message = message + "I have failed to connect to the {} Wordpress site".format(wordpress_site)
+			message = message + "I have failed to connect to the Wordpress site"
 		else:
 			message = message + "I have successfully connected to the Wordpress site. Users can get the application password they need to link their account from here: {}/wp-admin/authorize-application.php?app_name=Renfield.".format(wordpress_site)
 	
@@ -159,15 +159,16 @@ async def debug(ctx: discord.Interaction):
 @bot.tree.command(name='sync', description='Sync new/updated commands to global')
 @commands.is_owner()
 async def sync(ctx: discord.Interaction):
-	try:
-		synced = await bot.tree.sync()
-		mylist = []
-		for c in synced:
-			mylist.append(c.name)
-		await ctx.response.send_message('Sync of {} global commands complete: {}'.format(len(synced), ", ".join(mylist)))
-
-	except Exception as e:
-		print(e)
+    print("Sync Command")
+    try:
+        synced = await bot.tree.sync()
+        mylist = []
+        for c in synced:
+            mylist.append(c.name)
+        await ctx.response.send_message('Sync of {} global commands complete: {}'.format(len(synced), ", ".join(mylist)))
+        
+    except Exception as e:
+        print(e)
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -227,7 +228,7 @@ async def main():
 		await bot.load_extension("cogs.diceroller")
 		await bot.load_extension("cogs.settings")
 		await bot.load_extension("cogs.wordpress_api")
-		await bot.load_extension("cogs.voice")
+		#await bot.load_extension("cogs.voice")
 		await bot.start(TOKEN)
 
 if __name__ == '__main__':
