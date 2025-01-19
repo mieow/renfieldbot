@@ -3,7 +3,7 @@ from discord.ext import commands
 import mysql.connector
 import os
 import renfield_sql
-from common import check_is_auth
+#from common import check_is_auth
 #from common import parse_command
 from tabulate import tabulate
 from dotenv import load_dotenv

@@ -18,6 +18,9 @@ import base64
 import urllib.parse
 import pprint
 
+from helper.logger import log
+from helper.wordpress_api_data import WordpressModal
+
 # https://developer.wordpress.org/rest-api/extending-the-rest-api/adding-custom-endpoints/
 
 	
@@ -31,78 +34,56 @@ class WordPressAPI(commands.Cog):
 		else:
 			await ctx.response.send_message("I'm sorry Master, the command failed.")
 			print(error)
-		
-	@check_restapi_active()
-	@app_commands.command(name="link", description="Link Discord Account to Wordpress Account")
-	@app_commands.describe(
-		wordpress_id="Wordpress Login Name",
-		wordpress_secret="Wordpress Application Password"
-	)
-	async def link(self, ctx, wordpress_id: str, wordpress_secret: str):
-		author = ctx.user.display_name
-		nameid = ctx.user.id
+
+	@app_commands.command(name="link-help", description="Sends the User a DM on how to setup their application password")
+	async def link_help(self, ctx):
+		user = ctx.user
 		server = ctx.guild.name
-		wordpress_site = get_bot_setting("wordpress_site", server)
+		await ctx.response.defer()
+		try:
+			static_file_location = os.getenv("STATIC_FILES")
+			image1 = discord.File(static_file_location + "/Link_Instructions/Image#1.png")
+			image2 = discord.File(static_file_location + "/Link_Instructions/Image#2.png")
+			image3 = discord.File(static_file_location + "/Link_Instructions/Image#3.png")
+      
+			wordpress_site = get_bot_setting("wordpress_site", server)
+			wordpress_site = wordpress_site + "wp-admin/profile.php"
+			
+			message1 = f'## Setting Up Your WordPress Account Application Password\nGo to {wordpress_site}\nScroll Down to Application Passwords'
+			message2 = f'Enter into the a name for the password (Renfield is suggested for easy reminder)'
+			message3 = f'Click "Add New Application Password"'
+			message4 = f'Once the password is generated, click Copy, and it can be pasted into the textbox for /link\nEnjoy :D'
+			await user.send(message1)
+			await user.send(file=image1)
+			await user.send(message2)
+			await user.send(file=image2)
+			await user.send(message3)
+			await user.send(file=image3)
+			await user.send(message4)
+			await ctx.followup.send(f'Sent Instructions to {user.mention}')
+
+		except Exception as e:
+			log.error(e)
+   
+  
+	@check_restapi_active()
+	@app_commands.command(name="link", description="Link Discord Account to Wordpress Account (Do /link-help for help)")
+	async def link_modal(self, ctx):
+		user = ctx.user
+		try:
+			server = ctx.guild.name
+			wordpress_site = get_bot_setting("wordpress_site", server)
 		
-		if wordpress_site == "none":
-			await ctx.response.send_message("I'm sorry Master, This Discord server has not been linked to a Wordpress Site")
-		else:
-			status = save_link(nameid, wordpress_id, wordpress_secret, server)
-			if status:
-				# check link
-				wpinfo = curl_get_me(nameid, server)
-				if "code" in wpinfo:
-					code = wpinfo["code"]
-					if code == 'rest_not_logged_in':
-						await ctx.response.send_message('I\'m sorry Master, I don\'t seem to be able to log in to the Wordpress Site for you')
-					elif code == 'invalid_username':
-						await ctx.response.send_message('I\'m sorry Master, That login name seems to be wrong. Is it spelled correctly?')
-					elif code == 'incorrect_password':
-						await ctx.response.send_message('I\'m sorry Master, That password is incorrect. You need a special "Application Password" and not your normal site login password. Go to {}/wp-admin/profile.php to create one.'.format(wordpress_site))
-					else:
-						await ctx.response.send_message('I\'m sorry Master, I recieved this error message when I tried to connect: {}'.format(wpinfo))
-				else:
-					# add to any server roles that match their WP account role names
-					wproles = wpinfo["roles"]
-					for wprole in wproles:
-						for r in ctx.guild.roles:
-							if wprole.upper() == r.name.upper():
-								member = ctx.user
-								role = get(member.guild.roles, name=r.name)
-								await member.add_roles(role)
-					
-					# Get the info on the character
-					charinfo = get_my_character(nameid, server)
-					if "code" in charinfo:
-						await ctx.response.send_message('I\'m sorry Master, I failed to read your character {}'.format(charinfo["message"]))
-					else:
-						#pprint.pprint(charinfo)
-						
-						# add/update Player Name in member table
-						memberinfo = add_member(nameid, charinfo["result"]["player"], server)
-						
-						# set nickname (but not for the server owners or admins)
-						if ctx.guild.me.guild_permissions.manage_nicknames:
-							if ctx.user.guild_permissions.administrator:
-								await ctx.response.send_message('Account has been linked')
-							else:
-								nickname = charinfo["result"]["display_name"]
-								if charinfo["result"]["pronouns"] != "":
-									nickname += " (" + charinfo["result"]["pronouns"] + ")"
-								try:
-									await ctx.user.edit(nick=nickname)
-									await ctx.response.send_message('Thank you {}. I have connected to your wordpress account. Your Discord server nickname has been set to {}.'.format(charinfo["result"]["player"], nickname))
-								except Exception as e:
-									print(e)
-									await ctx.response.send_message('Failed to set nickname. Check that the bot has permission to manage nicknames.'.format(charinfo["result"]["player"], nickname))
-						else:
-							await ctx.response.send_message('Character has been linked, but I don\'t have permission on this server to set your nickname.'.format(charinfo["result"]["player"], nickname))
-
-
+			if wordpress_site == "none":
+				await ctx.response.send_message("I'm sorry Master, This Discord server has not been linked to a Wordpress Site")
 			else:
-				await ctx.response.send_message("I\'m sorry Master, I can't seem to remember that. Something went wrong.")
+				wordpressModal = WordpressModal(user)
+				await ctx.response.send_modal(wordpressModal)
+		except Exception as e:
+			log.error(f"Error in link_direct_message: {e}")
+			await interaction.response.send_message("An error occurred while starting the linking process.", ephemeral=True)
 
-	@link.error
+	@link_modal.error
 	async def link_error(self, ctx, error):
 		if isinstance(error, discord.Forbidden):
 			await ctx.channel.send("I'm sorry, I don't have permission to modify your Roles on this Discord server.")
