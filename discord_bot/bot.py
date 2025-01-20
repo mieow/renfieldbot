@@ -180,76 +180,29 @@ async def debug(ctx: discord.Interaction):
 
 @bot.tree.command(name="sync", description="Sync new/updated commands to global or guild")
 @commands.is_owner()
-async def sync(interaction: discord.Interaction, scope: str = "global"):
-    """
-    Syncs commands to global or a specific guild.
-    Usage:
-    - `/sync global` for global sync
-    - `/sync guild` for the current guild
-    """
+async def sync(interaction: discord.Interaction):
     log.info("Sync command invoked")
     await interaction.response.defer()
 
     try:
-        if scope.lower() == "guild" and interaction.guild:
-            # Sync commands to the current guild
-            guild = discord.Object(id=interaction.guild.id)
-            synced = await bot.tree.sync(guild=guild)
-            scope_message = f"to guild {interaction.guild.name} ({interaction.guild.id})"
-        else:
-            # Default to global sync
-            synced = await bot.tree.sync()
-            scope_message = "globally"
+        synced = await bot.tree.sync()
 
         # Build a list of synced commands
         mylist = [c.name for c in synced]
-        log.info(f"Synced {len(synced)} command(s) {scope_message}: {mylist}")
+        log.info(f"Synced {len(synced)} command(s) : {mylist}")
 
         await interaction.followup.send(
-            f"Sync of {len(synced)} command(s) {scope_message} complete: {', '.join(mylist)}"
+            f"Sync of {len(synced)} command(s) complete: {', '.join(mylist)}"
         )
     except Exception as e:
         log.error(f"Error during sync: {e}")
         await interaction.followup.send("An error occurred while syncing commands. Please check logs.")
 
 
-
-
 @bot.event
 async def on_command_error(ctx, error):
 	if isinstance(error, commands.CommandNotFound):
 		await ctx.send("I'm sorry Master, I do not know that command.")
-
-# discord.on_voice_state_update(member, before, after)
-# VoiceState -> channel -> VoiceChannel
-# check if before <> after
-# then output to tannoy (with notification?)
-@bot.event
-async def on_voice_state_update(member, before, after):
-	server = member.guild
-	logchannel = get_log_channel(server)
-	
-	try:
-		log_voice_channel = get_bot_setting("voice-activity", server.name)
-	except Exception as e:
-		log.error(e)
-	
-	aftername = ""
-	beforename = ""
-	if after.channel is not None:
-		aftername = after.channel.name
-	if before.channel is not None:
-		beforename = before.channel.name
-		
-	if log_voice_channel == "on":
-		if aftername != beforename:
-			if beforename == "":
-				await logchannel.send("{} has entered the {} channel".format(member.display_name, after.channel.name))
-			elif aftername == "":
-				await logchannel.send("{} has left the {} channel".format(member.display_name, before.channel.name))
-			else:
-				await logchannel.send("{} has moved from the {} to the {} channel.".format(member.display_name, before.channel.name, after.channel.name))
-
 
 async def main():
 	logger = logging.getLogger('discord')

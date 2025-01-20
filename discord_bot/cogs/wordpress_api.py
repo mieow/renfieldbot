@@ -20,6 +20,7 @@ import pprint
 
 from helper.logger import log
 from helper.wordpress_api_data import WordpressModal
+from helper.character_display import displayCharacter
 
 # https://developer.wordpress.org/rest-api/extending-the-rest-api/adding-custom-endpoints/
 
@@ -106,15 +107,15 @@ class WordPressAPI(commands.Cog):
 			player = charinfo["result"]["player"]
 			approved = charinfo["result"]["date_of_approval"]
 			char_status = charinfo["result"]["char_status"]
-			cname = charinfo["result"]["display_name"]
+			cname = charinfo["result"]["name"]
 			
 			pathrating = charinfo["result"]["path_rating"]
 			path = charinfo["result"]["path_of_enlightenment"]
 			maxwp = charinfo["result"]["willpower"]
 			
-			#pprint.pprint(charinfo["result"])
+			log.info(charinfo["result"])
 		
-			await ctx.user.send("Hello {}. Your character is at {} on {} and has willpower {}. It was approved on {}.".format(player, pathrating, path, maxwp, approved))
+			await ctx.user.send(displayCharacter(charinfo["result"]))
 			await ctx.response.send_message("Your {} character is called {} and is currently {}.".format(clan, cname, char_status))
 
 
