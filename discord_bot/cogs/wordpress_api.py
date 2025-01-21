@@ -112,16 +112,13 @@ class WordPressAPI(commands.Cog):
 			pathrating = charinfo["result"]["path_rating"]
 			path = charinfo["result"]["path_of_enlightenment"]
 			maxwp = charinfo["result"]["willpower"]
-			
-			log.info(charinfo["result"])
-		
-			await ctx.user.send(displayCharacter(charinfo["result"]))
-			await ctx.response.send_message("Your {} character is called {} and is currently {}.".format(clan, cname, char_status))
+					
+			await ctx.response.send_message("{} The {} is currently {}.".format(cname, clan, char_status))
 
 
 
 	@check_restapi_active()
-	@app_commands.command(name="whois", description="Report character information of a specific character")
+	#@app_commands.command(name="whois", description="Report character information of a specific character")
 	async def whois(self, ctx, character: str):
 		nameid = ctx.user.id
 		server = ctx.guild.name

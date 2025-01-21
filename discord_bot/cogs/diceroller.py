@@ -5,6 +5,7 @@ from discord.ext import commands
 from discord import Embed, app_commands
 from cogs.wordpress_api import get_my_character, get_character, is_storyteller
 from renfield_sql import check_is_auth, check_restapi_active
+from helper.diceroller_viewer import *
 
 # SUCCESSES - BOLD
 # 10S - ITALIC
@@ -84,6 +85,11 @@ class DiceRoller(commands.Cog):
 				else:
 					pprint.pprint(charinfo["result"])
 					await ctx.response.send_message("Could not find {} for {} or level is 0.".format(ability, cname))
+	 
+	@app_commands.command(name="roll", description="roll")
+	async def roll(self, ctx):
+		view = AttributeSelectionView()
+		await ctx.response.send_message("Please select your attributes:", view=view)
 
 	@check_is_auth()
 	@check_restapi_active()
