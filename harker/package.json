@@ -1,0 +1,16 @@
+{
+  "name": "harker",
+  "version": "1.0.0",
+  "description": "Helpful Harker",
+  "main": "harker.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Magent",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "express": "^5.2.1",
+    "mariadb": "^3.2.0"
+  }
+}

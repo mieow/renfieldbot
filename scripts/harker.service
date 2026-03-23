@@ -1,0 +1,13 @@
+[Unit]
+Description=Harker
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/renfield/discord/harker
+ExecStart=/home/renfield/.nvm/versions/node/v25.8.1/bin/node /home/renfield/discord/harker/harker.js
+User=renfield
+Restart=on-failure
+
+[Install]
+WantedBy=network-online.target

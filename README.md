@@ -83,7 +83,7 @@ Run the setup script:
 
 ### Final setup
 
-Edit the /home/renfield/.env file with your discord bot information
+Edit the /home/renfield/discord/.env file with your discord bot information
 
 Edit the /home/renfield/.aws/credentials file with your aws polly credentials
 
