@@ -1,4 +1,4 @@
-import mysql.connector
+import mariadb
 import os
 
 from dotenv import load_dotenv
@@ -17,28 +17,41 @@ config = {
 }
 	
 class renfield_sql():
+	def __init__(self):
+		self.connection = None
+		self.cursor = None
 
 	def connect(self):
 		try:
-			self.connection = mysql.connector.connect(**config)
+			self.connection = mariadb.connect(**config)
 			self.cursor = self.connection.cursor(buffered=True)
-		except mysql.connector.Error as err:
+		except mariadb.Error as err:
 			print("Something went wrong: {}".format(err))
+			self.connection = None
+			self.cursor = None
 		return self.cursor
 
 	def disconnect(self):
-		self.cursor.close()
-		self.connection.close()
+		if self.cursor:
+			self.cursor.close()
+		if self.connection:
+			self.connection.close()
 
 	def commit(self):
-		self.connection.commit()
+		if self.connection:
+			self.connection.commit()
 
 	def test(self):
-		print(self.connection)
-		return "This is a test"
+		if self.connection:
+			print(self.connection)
+			return "This is a test"
+		else:
+			return "No connection established"
 		
 	def save_linear_setting(self, nameid, setting_name, setting_level, server):
 		mycursor = self.connect()
+		if not mycursor:
+			return 0
 		ok = 1
 		
 		if setting_name == "":
@@ -87,6 +100,8 @@ class renfield_sql():
 
 	def get_linear_setting(self, nameid, setting_name, default_level, server):
 		mycursor = self.connect()
+		if not mycursor:
+			return default_level
 		ok = 1
 		# get the current level of the setting
 		try:
@@ -109,6 +124,8 @@ class renfield_sql():
 	
 	def clear_linear_setting(self, nameid, setting_name, server):
 		mycursor = self.connect()
+		if not mycursor:
+			return 0
 		ok = 1
 		try:
 			sql = "DELETE FROM `linearsettings` where setting_name = %s and name = %s and server = %s"
@@ -129,6 +146,8 @@ class renfield_sql():
 
 	def get_player_name(self, member_id, nameid):
 		mycursor = self.connect()
+		if not mycursor:
+			return ""
 		playername = ""
 		# get the current level of the setting
 		try:
@@ -148,6 +167,8 @@ class renfield_sql():
 def update_event(beforename, aftername, starttime, server):
 	mydb = renfield_sql()
 	mycursor = mydb.connect()
+	if not mycursor:
+		return 0
 	ok = 0
 	# update
 	try:
@@ -171,6 +192,8 @@ def get_bot_setting(setting_name, server, default_value: str = ""):
 
 	mydb = renfield_sql()
 	mycursor = mydb.connect()
+	if not mycursor:
+		return default_value
 	ok = 1
 	# get the current level of the setting
 	try:
@@ -196,6 +219,8 @@ def get_bot_setting(setting_name, server, default_value: str = ""):
 def save_bot_setting(setting_name, setting_value, server):
 	mydb = renfield_sql()
 	mycursor = mydb.connect()
+	if not mycursor:
+		return 0
 	ok = 1
 	
 	if setting_name == "":
@@ -227,6 +252,7 @@ def save_bot_setting(setting_name, setting_value, server):
 			ok = 0
 			print('insert failed')
 			print(e)
+			print(mycursor.statement)
 	
 	else:
 		# update
@@ -239,6 +265,7 @@ def save_bot_setting(setting_name, setting_value, server):
 			ok = 0
 			print('update failed')
 			print(e)
+			print(mycursor.statement)
 
 	mydb.disconnect()
 	return ok
@@ -246,6 +273,8 @@ def save_bot_setting(setting_name, setting_value, server):
 def save_link(nameid, wordpress_id, secret, server):
 	mydb = renfield_sql()
 	mycursor = mydb.connect()
+	if not mycursor:
+		return 0
 	ok = 1
 	
 	count = 0
@@ -262,14 +291,12 @@ def save_link(nameid, wordpress_id, secret, server):
 	
 	if not ok:
 		return 0
-	
-	encSecret = str_encode(secret)
-		
+			
 	if count == 0:
 		# insert
 		try:
 			sql = "INSERT INTO wp_link (server, name, wordpress_id, secret) VALUES (%s, %s, %s, %s)"
-			val = (server, nameid, wordpress_id, encSecret)
+			val = (server, nameid, wordpress_id, secret)
 			mycursor.execute(sql, val)
 			mydb.commit()
 		except Exception as e:
@@ -281,7 +308,7 @@ def save_link(nameid, wordpress_id, secret, server):
 		# update
 		try:
 			sql = "UPDATE wp_link SET wordpress_id = %s, secret = %s WHERE name = %s and server = %s"				
-			val = (wordpress_id, encSecret, nameid, server)
+			val = (wordpress_id, secret, nameid, server)
 			mycursor.execute(sql, val)
 			mydb.commit()
 		except Exception as e:
@@ -292,10 +319,54 @@ def save_link(nameid, wordpress_id, secret, server):
 	mydb.disconnect()
 	return ok
 
+# Get member
+def get_member(nameid, server):
+	mydb = renfield_sql()
+	mycursor = mydb.connect()
+	if not mycursor:
+		return {"status": 0, "message": "Database connection failed"}
+	member_id = 0
+	result = {
+		"status": 1,
+		"member_id" : 0,
+		"message" : ""
+	}
+	count = 0
+	try:
+		sql = "select count(member_id) from members where name = %s"
+		val = ("{}".format(nameid), )
+		mycursor.execute(sql, val)
+		countall = mycursor.fetchall()
+		count = countall[0][0]
+		#result["message"] = 'Master, I have the members list.'
+	except Exception as e:
+		print(e)
+		result["message"] = 'I\'m sorry, Master {}, I was unable to read the member list.'.format(nameid)
+		result["status"] = 0
+		return result
+		
+	if count > 0:
+		try:
+			sql = "select member_id from members where name = %s"
+			val = ("{}".format(nameid), )
+			mycursor.execute(sql, val)
+			member_ids = mycursor.fetchall()
+			member_id = member_ids[0][0]
+			result["member_id"] = member_id
+			#result["message"] = 'Thank you, Master. I have confirmed that you are a member with membership number {}.'.format(member_id)
+		except Exception as e:
+			print(e)
+			result["message"] = 'I\'m sorry, Master, I was unable to find your membership number.'
+			result["status"] = 0
+	
+	return result
+		
 # Add member
 def add_member(nameid, playername, server):
 	mydb = renfield_sql()
 	mycursor = mydb.connect()
+	if not mycursor:
+		return {"status": 0, "message": "Database connection failed"}
 	result = {
 		"status": 1,
 		"member_id" : 0,
@@ -371,6 +442,8 @@ def add_member(nameid, playername, server):
 def get_link(nameid, server):
 	mydb = renfield_sql()
 	mycursor = mydb.connect()
+	if not mycursor:
+		return {"wordpress_id": "", "secret": ""}
 	ok = 1
 	info = {
 		"wordpress_id" : "",
@@ -443,6 +516,8 @@ def get_log_channel(server):
 def get_wordpress_id( nameid, server):
 	mydb = renfield_sql()
 	mycursor = mydb.connect()
+	if not mycursor:
+		return ""
 	wordpress_id = ""
 	# get the current level of the setting
 	try:

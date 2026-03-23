@@ -54,6 +54,8 @@ CREATE TABLE wp_link (
 	server TEXT,
 	name TEXT,
 	wordpress_id TEXT,
-	secret TEXT
+	token TEXT,
+	secret TEXT,
+	auth_status TEXT
 );
 

@@ -15,11 +15,19 @@ yum install -y python3-devel
 yum install -y opus
 yum install -y python3-pip
 
+python3 -m pip install mariadb
+yum install -y mariadb105
+yum install -y mariadb-connector-c
+yum install -y mariadb-connector-c-devel
+
+python3 -m pip install mariadb
+
 cd /usr/local/bin
 mkdir ffmpeg && cd ffmpeg
 wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
 tar -xf ffmpeg-release-amd64-static.tar.xz
-
+cp -a /usr/local/bin/ffmpeg/ffmpeg-*-amd64-static/. /usr/local/bin/ffmpeg/
+ln -s /usr/local/bin/ffmpeg/ffmpeg /usr/bin/ffmpeg
 
 adduser renfield
 su - renfield -c "mkdir .ssh && chmod 700 .ssh"
@@ -57,6 +65,7 @@ DATABASE_PASSWORD="${renfieldpass}"
 LOG_HOME="/home/renfield/logs"
 OWNER=581081113263472643
 POLLY_WORD_LIMIT=1000000
+CALLBACK_URL=""
 
 DEFAULT_ADMIN_ROLE="Storytellers"
 DEFAULT_WORDPRESS_SITE="none"
@@ -69,7 +78,7 @@ DEFAULT_EVENT_DESC="[No description]"
 DEFAULT_LOCATION="[No location]"
 EOF
 
-cp env.txt /home/renfield/.env
+cp env.txt /home/renfield/discord/.env
 chown renfield /home/renfield/.env
 
 
