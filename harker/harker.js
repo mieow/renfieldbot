@@ -274,41 +274,41 @@ helper.get('/auth-callback/', async (req, res) => {
       return res.status(500).send('Database error: multiple records updated for Wordpress username')
     }
 
-    // Get the webhook URL for the server
-    const webhookUrlResult = await conn.query("SELECT setting_value FROM serversettings WHERE server = ? AND setting_name = 'harker-webhook'", [server])
-    if (webhookUrlResult.length === 0) {
-      console.log('No webhook URL found in database for server:', server)
-      return res.status(500).send('Database error: no webhook URL found for server')
-    }
-    const webhookUrl = webhookUrlResult[0].setting_value
-    if (!webhookUrl) {
-      console.log('Webhook URL is empty in database for server:', server)
-      return res.status(500).send('Database error: webhook URL is empty for server')
-    }
-    if (webhookUrl === undefined) {
-      console.log('Webhook URL is undefined in database for server:', server)
-      return res.status(500).send('Database error: webhook URL is undefined for server')
-    }
-    console.log('Webhook URL retrieved from database:', webhookUrl)
+    // // Get the webhook URL for the server
+    // const webhookUrlResult = await conn.query("SELECT setting_value FROM serversettings WHERE server = ? AND setting_name = 'harker-webhook'", [server])
+    // if (webhookUrlResult.length === 0) {
+    //   console.log('No webhook URL found in database for server:', server)
+    //   return res.status(500).send('Database error: no webhook URL found for server')
+    // }
+    // const webhookUrl = webhookUrlResult[0].setting_value
+    // if (!webhookUrl) {
+    //   console.log('Webhook URL is empty in database for server:', server)
+    //   return res.status(500).send('Database error: webhook URL is empty for server')
+    // }
+    // if (webhookUrl === undefined) {
+    //   console.log('Webhook URL is undefined in database for server:', server)
+    //   return res.status(500).send('Database error: webhook URL is undefined for server')
+    // }
+    // console.log('Webhook URL retrieved from database:', webhookUrl)
 
-    // Send a message to the webhook URL to notify that the authentication was successful
-    const webhookPayload = {
-      content: `Authentication successful for user ${wordpressUsername} (ID: ${userId}) on server ${server}`
-    };
+    // // Send a message to the webhook URL to notify that the authentication was successful
+    // const webhookPayload = {
+    //   content: `Authentication successful for user ${wordpressUsername} (ID: ${userId}) on server ${server}`
+    // };
 
-    const webhookResponse = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(webhookPayload)
-    });
+    // const webhookResponse = await fetch(webhookUrl, {
+    //   method: 'POST',
+    //   headers: {
+    //     'Content-Type': 'application/json'
+    //   },
+    //   body: JSON.stringify(webhookPayload)
+    // });
 
-    if (!webhookResponse.ok) {
-      console.log('Failed to send webhook notification:', webhookResponse.statusText)
-    } else {
-      console.log('Webhook notification sent successfully')
-    }
+    // if (!webhookResponse.ok) {
+    //   console.log('Failed to send webhook notification:', webhookResponse.statusText)
+    // } else {
+    //   console.log('Webhook notification sent successfully')
+   // }
 
     console.log('Authentication successful for user ID:', userId)
 
@@ -319,6 +319,69 @@ helper.get('/auth-callback/', async (req, res) => {
     if (conn) conn.release();
   }
 
-  res.send('<p>Authentication successful for ' + wordpressUsername + '! You can close this window.</p>')
+  res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication Successful</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #8B0000 0%, #000000 100%);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        h1 {
+            color: #DC143C;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .username {
+            background: #F0B8C0;
+            padding: 10px 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+            font-weight: bold;
+            color: #495057;
+        }
+        .message {
+            color: #6c757d;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img class="success-icon" src="images/harker.png" alt="Harker">
+        <h1>Authentication Successful!</h1>
+        <div class="username">${wordpressUsername}</div>
+        <p class="message">Your Discord account has been successfully linked to your WordPress account. You can now close this window and return to Discord.</p>
+    </div>
+</body>
+</html>
+  `)
 })
 
