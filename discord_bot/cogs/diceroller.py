@@ -5,6 +5,7 @@ from discord.ext import commands
 from discord import Embed, app_commands
 from cogs.wordpress_api import get_my_character, get_character, is_storyteller
 from renfield_sql import check_is_auth, check_restapi_active
+from helper.diceroller_viewer import *
 
 # SUCCESSES - BOLD
 # 10S - ITALIC
@@ -55,11 +56,12 @@ class DiceRoller(commands.Cog):
 		if "code" in charinfo:
 			await ctx.response.send_message(charinfo["message"])
 		else:
-			cname = charinfo["result"]["display_name"]
+			cname = charinfo["result"]["name"]
+			pname = charinfo["result"]["display_name"]
 			rolls = []
 			if attribute == "init":
 				str = roll_initiative(charinfo["result"])
-				await ctx.response.send_message("Result of {}'s Initiative roll: {}".format(cname, str))
+				await ctx.response.send_message("Result of {}'s ({}'s) Initiative roll: {}".format(cname, str))
 						
 			elif attribute != "skip":
 				rolling = []
@@ -73,16 +75,21 @@ class DiceRoller(commands.Cog):
 					rolling.append(ability)
 			
 				str = formatdice(rolls)
-				await ctx.response.send_message("Result of {}'s {} roll: {}".format(cname, " + ".join(rolling), str))
+				await ctx.response.send_message("Result of {}'s ({}'s) {} roll: {}".format(cname, pname, " + ".join(rolling), str))
 			else:
 				level = get_level_from_character(charinfo["result"], ability)
 				if level > 0:
 					rolls = dice(level)
 					str = formatdice(rolls)
-					await ctx.response.send_message("Result of {}'s {} roll: {}".format(cname, ability, str))
+					await ctx.response.send_message("Result of {}'s ({}) {} roll: {}".format(cname, pname, ability, str))
 				else:
 					pprint.pprint(charinfo["result"])
 					await ctx.response.send_message("Could not find {} for {} or level is 0.".format(ability, cname))
+	 
+	@app_commands.command(name="roll", description="roll")
+	async def roll(self, ctx):
+		view = AttributeSelectionView()
+		await ctx.response.send_message("Please select your attributes:", view=view)
 
 	@check_is_auth()
 	@check_restapi_active()

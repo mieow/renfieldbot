@@ -492,7 +492,7 @@ def get_character(server: str, nameid: str, character: str):
 		if isST and character.isnumeric():
 			id = character
 			
-			uri = "/vampire-character/v1/character/{}".format(id)
+			uri = "vampire-character/v1/character/{}".format(id)
 			result = curl_get(uri, server, nameid)
 
 			if "code" in result:
@@ -543,7 +543,7 @@ def get_character(server: str, nameid: str, character: str):
 		elif isST:
 			# try getting the character info by running a query as if 'character' is a WP ID
 			wordpress_id = character
-			uri = "/vampire-character/v1/character/wpid?wordpress_id={}".format(urllib.parse.quote(wordpress_id))
+			uri = "vampire-character/v1/character/wpid?wordpress_id={}".format(urllib.parse.quote(wordpress_id))
 			result = curl_get(uri, server, nameid)
 
 			if "code" in result:
@@ -553,7 +553,7 @@ def get_character(server: str, nameid: str, character: str):
 				elif result["code"] == 'no_character':
 				
 					# for everything else, we'll need a list of the active characters
-					uri = "/vampire-character/v1/character/"
+					uri = "vampire-character/v1/character/"
 					list = curl_get(uri, server, nameid)
 										
 					# does the character directly match an existing character?
@@ -567,7 +567,7 @@ def get_character(server: str, nameid: str, character: str):
 					if match == 1:
 						# retrieve full character info
 						id = charinfo["characterID"]
-						uri = "/vampire-character/v1/character/{}".format(id)
+						uri = "vampire-character/v1/character/{}".format(id)
 						result = curl_get(uri, server, nameid)
 
 						if "code" in result:

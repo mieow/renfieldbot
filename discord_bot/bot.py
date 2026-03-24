@@ -18,8 +18,8 @@ from renfield_sql import get_bot_setting, save_bot_setting, get_log_channel
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
-GUILD = os.getenv('DISCORD_GUILD')
-GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
+# GUILD = os.getenv('DISCORD_GUILD')
+# GUILDID = int(os.getenv('DISCORD_GUILD_ID'))
 LOG_HOME = os.getenv('LOG_HOME')
 DISCORDLOG = LOG_HOME + '/discord.log'
 OWNER = os.getenv('LOG_HOME')
@@ -87,19 +87,19 @@ bot = commands.Bot(
 # Connect to Discord when ready
 @bot.event
 async def on_ready():
-	print('---------------------------------------------')
-	print('Bot User ID: {}'.format(bot.user.id))
-	print('Bot User Name: ' + bot.user.name)
-	print('Running with discord.py version: ' + discord.__version__)
+	logging.info('---------------------------------------------')
+	logging.info('Bot User ID: {}'.format(bot.user.id))
+	logging.info('Bot User Name: ' + bot.user.name)
+	logging.info('Running with discord.py version: ' + discord.__version__)
 	# create encryption key, if needed
-	print('Encryption Key Generation: ' + write_key())
-	print('---------------------------------------------')
-	print('Environment:')
+	logging.info('Encryption Key Generation: ' + write_key())
+	logging.info('---------------------------------------------')
+	logging.info('Environment:')
 	config = dotenv_values("/home/renfield/discord/.env")
 	for env in config:
-		print ("    " + env + " : " + os.getenv(env))
-	print('---------------------------------------------')
-	print('Renfield is at your service!')
+		logging.info("    " + env + " : " + os.getenv(env))
+	logging.info('---------------------------------------------')
+	logging.info('Renfield is at your service!')
 	#await bot.tree.sync()
 
 # Ping the bot
@@ -107,39 +107,46 @@ async def on_ready():
 	name="hello", 
 	description="Get status of Renfield"
 )
-async def hello(ctx):
+async def hello(ctx: discord.Interaction):
 	'''Check that Renfield is listening'''
-	author = ctx.user.name
-	nameid = ctx.user.id
-	server = ctx.guild.name
-	
-	dt = datetime.now()
-	ts = datetime.timestamp(dt)
-	lastupdated = float(get_bot_setting("last_updated_words", "None", 0))
-	lastupdateddt = date.fromtimestamp(lastupdated)
-	if lastupdateddt.strftime("%m-%Y") == dt.strftime("%m-%Y"):
-		current = int(get_bot_setting("current_words", "None", 0))
-	else:
-		current = 0
-		save_bot_setting("current_words", current, "None")
-	
-	wordpress_site = get_bot_setting("wordpress_site", server)
-	voice = get_bot_setting("polly_voice", server)
-	limit = int(os.getenv('POLLY_WORD_LIMIT'))
-	
-	message = 'Yes, Master {}, I am at your command!\n\nThis is the "{}" guild server. I speak with the AWS Polly voice called {}. '.format(author,server, voice)
-	message = message + 'I have used {} out of my available {} AWS Polly words this month.\n\n'.format(current, limit)
-	message = message + 'Name of Storyteller admin role: {}\n'.format(get_bot_setting("admin_role", server))
-	message = message + 'Wordpress site: {}\n\n'.format(wordpress_site)
+	await ctx.response.defer()
+	try:
+		author = ctx.user.name
+		nameid = ctx.user.id
+		server = ctx.guild.name
+		
+		dt = datetime.now()
+		ts = datetime.timestamp(dt)
+		lastupdated = float(get_bot_setting("last_updated_words", "None", 0))
+		lastupdateddt = date.fromtimestamp(lastupdated)
+		if lastupdateddt.strftime("%m-%Y") == dt.strftime("%m-%Y"):
+			current = int(get_bot_setting("current_words", "None", 0))
+		else:
+			current = 0
+			save_bot_setting("current_words", current, "None")
+		
+		logging.info("Getting database information")
+		wordpress_site = get_bot_setting("wordpress_site", server)
+		voice = get_bot_setting("polly_voice", server)
+		limit = int(os.getenv('POLLY_WORD_LIMIT'))
+		
+		message = 'Yes, Master {}, I am at your command!\n\nThis is the "{}" guild server. I speak with the AWS Polly voice called {}. '.format(author,server, voice)
+		message = message + 'I have used {} out of my available {} AWS Polly words this month.\n\n'.format(current, limit)
+		message = message + 'Name of Storyteller admin role: {}\n'.format(get_bot_setting("admin_role", server))
+		message = message + 'Wordpress site: {}\n\n'.format(wordpress_site)
 
-	# if wordpress_site != "none":
-	# 	if cogs.wordpress_api.curl_checkAPI(server):
-	# 		message = message + "I have failed to connect to the {} Wordpress site".format(wordpress_site)
-	# 	else:
-	# 		message = message + "I have successfully connected to the Wordpress site. Users can get the application password they need to link their account from here: {}/wp-admin/authorize-application.php?app_name=Renfield.".format(wordpress_site)
-	
+		logging.info("Attempting to connect to wordpressAPI")
+		if wordpress_site or wordpress_site != "none":
+			if cogs.wordpress_api.curl_checkAPI(server):
+				message = message + "I have failed to connect to the {} Wordpress site".format(wordpress_site)
+			else:
+				message = message + "I have successfully connected to the Wordpress site. Users can get the application password they need to link their account from here: {}/wp-admin/authorize-application.php?app_name=Renfield.".format(wordpress_site)
+	except Exception as e:
+		message = "Error Occurred"
+		logging.error(e)
 
-	await ctx.response.send_message(message)
+	logging.info(f'Sending Message: {message}')
+	await ctx.followup.send(message)
 
 @bot.tree.command(name='debug', description='Toggle debug mode')
 @commands.is_owner()
@@ -158,16 +165,24 @@ async def debug(ctx: discord.Interaction):
 
 @bot.tree.command(name='sync', description='Sync new/updated commands to global')
 @commands.is_owner()
-async def sync(ctx: discord.Interaction):
-	try:
-		synced = await bot.tree.sync()
-		mylist = []
-		for c in synced:
-			mylist.append(c.name)
-		await ctx.response.send_message('Sync of {} global commands complete: {}'.format(len(synced), ", ".join(mylist)))
+async def sync(interaction: discord.Interaction):
+    logging.info("Sync command invoked")
+    await interaction.response.defer()
 
-	except Exception as e:
-		print(e)
+    try:
+        synced = await bot.tree.sync()
+
+        # Build a list of synced commands
+        mylist = [c.name for c in synced]
+        logging.info(f"Synced {len(synced)} command(s) : {mylist}")
+
+        await interaction.followup.send(
+            f"Sync of {len(synced)} command(s) complete: {', '.join(mylist)}"
+        )
+    except Exception as e:
+        logging.error(f"Error during sync: {e}")
+        await interaction.followup.send("An error occurred while syncing commands. Please check logs.")
+
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -231,13 +246,19 @@ async def main():
 		await bot.start(TOKEN)
 
 if __name__ == '__main__':
-	try:
-		asyncio.run(main())
-	except Exception as e:
-		print('Renfield is not waking up')
-		print(e)
-	finally:
-		print('Renfield has gone back to bed')
+   # Configure the logging
+    logging.basicConfig(
+        level=logging.INFO,  # Set the logging level
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Format for log messages
+        datefmt='%Y-%m-%d %H:%M:%S'  # Format for timestamps
+    )
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logging.error('Renfield is not waking up')
+        logging.error(e)
+    finally:
+        logging.info('Renfield has gone back to bed')
 		
 #-------------------------------
 

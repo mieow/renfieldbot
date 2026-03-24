@@ -187,6 +187,7 @@ def get_bot_setting(setting_name, server, default_value: str = ""):
 	except Exception as e:
 		ok = 0
 		print(e)
+		return "N/A"
 		
 	mydb.disconnect()
 
