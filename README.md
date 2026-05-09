@@ -97,6 +97,7 @@ systemctl status renfield
 https://discord.com/api/oauth2/authorize?client_id=690906493742088242&permissions=1099511630848&scope=bot%20applications.commands
 add manage roles
 add speak permission
+add manage webhooks
 
 # Useful pages:
 
