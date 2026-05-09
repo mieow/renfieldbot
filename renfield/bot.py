@@ -78,7 +78,7 @@ intents.message_content = True
 
 description = 'GVLARP Renfield Bot'
 bot = commands.Bot(
-	command_prefix='.', 
+	command_prefix='Renfield', 
 	description=description, 
 	intents=intents,
 	owner_ids=[OWNER]
@@ -140,7 +140,7 @@ async def hello(ctx: discord.Interaction):
 			if cogs.wordpress_api.curl_checkAPI(server):
 				message = message + "I have failed to connect to the {} Wordpress site".format(wordpress_site)
 			else:
-				message = message + "I have successfully connected to the Wordpress site. Users can get the application password they need to link their account from here: {}/wp-admin/authorize-application.php?app_name=Renfield.".format(wordpress_site)
+				message = message + "I have successfully connected to the Wordpress site. Users can link their characters to their Discord account by using the /link command.\n\n"
 	except Exception as e:
 		message = "Error Occurred"
 		logging.error(e)
