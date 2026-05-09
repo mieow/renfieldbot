@@ -4,8 +4,8 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/renfield/discord
-ExecStart=/home/renfield/discord/bot.py
+WorkingDirectory=/home/renfield/discord/renfield
+ExecStart=/home/renfield/discord/renfield/bot.py
 User=renfield
 Restart=on-failure
 
