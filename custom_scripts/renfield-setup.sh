@@ -15,6 +15,8 @@ python3 -m pip install --upgrade opuslib
 python3 -m pip install --upgrade discord.py[voice]
 python3 -m pip install --upgrade pycurl
 python3 -m pip install --upgrade requests-oauthlib
+python3 -m pip install --upgrade discord-ui
+
 
 cd
 mkdir logs
