@@ -1,0 +1,13 @@
+[Unit]
+Description=Renfield Bot
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/renfield/discord
+ExecStart=/home/renfield/discord/bot.py
+User=renfield
+Restart=on-failure
+
+[Install]
+WantedBy=network-online.target
