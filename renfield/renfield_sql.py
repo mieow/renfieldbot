@@ -123,7 +123,22 @@ class renfield_sql():
 		return ok
 		
 
+	def get_nameid_from_wordpress_id(self, wordpress_id: str, server: str):
+		mycursor = self.connect()
 
+		# query wp_links for the nameid that matches the wordpress_id and server
+		try:
+			sql = "SELECT name FROM wp_link WHERE wordpress_id = %s AND server = %s"
+			val = (wordpress_id, server)
+			mycursor.execute(sql, val)
+			result = mycursor.fetchone()
+			if result:
+				return result[0]
+			else:
+				return None
+		except mariadb.Error as e:
+			logging.error(f"Database error in get_nameid_from_wordpress_id: {str(e)}")
+			return None
 
 
 
