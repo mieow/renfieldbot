@@ -1,4 +1,5 @@
 import logging
+from xmlrpc import server
 
 import discord
 from discord.ext import commands
@@ -6,7 +7,7 @@ from discord.utils import get
 import mariadb
 import os
 from tabulate import tabulate
-from renfield_sql import get_bot_setting, save_bot_setting, renfield_sql, check_is_auth, check_restapi_active, get_link, save_link, add_member, get_wordpress_id
+from renfield_sql import renfield_sql, get_bot_setting, get_log_channel, save_bot_setting, check_is_auth, check_restapi_active, get_link, save_link, add_member, get_wordpress_id
 # from interactions import cog_ext, SlashContext
 # from interactions.utils.manage_commands import create_option, create_choice
 from discord import Embed, app_commands
@@ -30,6 +31,223 @@ CALLBACK_URL = os.getenv('CALLBACK_URL')
 class WordPressAPI(commands.Cog):
 	def __init__(self, bot):
 		self.bot = bot
+		
+	@commands.Cog.listener()
+	async def on_message(self, message):
+		# Check if the message was sent via webhook
+		if message.webhook_id is not None:
+			# This message was sent through a webhook
+			logging.info(f"Webhook message detected from webhook {message.webhook_id} in channel {message.channel.id}: {message.content}")
+			
+			mywebhookid = self.bot.application_id
+			if str(mywebhookid) == str(message.webhook_id):
+				logging.info("I sent the message - skipping")
+				return
+
+			# get the channel object from the channel id
+			channel = get(self.bot.get_all_channels(), id=message.channel.id)
+			logging.info(f"Retrieved channel object for channel ID {message.channel.id}: {channel}")
+			# get the guild from the channel
+			server = channel.guild if channel else None
+			logging.info(f"Retrieved server from channel: {server.name if server else 'None'}")
+			# list all the webhooks for the server and see if any of them match the webhook ID of the message
+			webhooks = await server.webhooks() if server else []
+			harkerwebhook = get_bot_setting("harker-webhook", server.name) if server else None
+			if not harkerwebhook:
+				logging.warning(f"Harker webhook URL not found in bot settings for server {server.name if server else 'None'}. Webhook message processing may not work as expected.")
+				return
+			else:
+				logging.info(f"Harker webhook is {harkerwebhook}")
+
+			logging.info(f"Retrieved {len(webhooks)} webhooks for server {server.name if server else 'None'}")
+			for webhook in webhooks:
+				logging.info(f"Checking webhook {webhook.id} with name {webhook.name} against message webhook ID {message.webhook_id}")
+
+				if str(webhook.id) == str(message.webhook_id):
+					logging.info(f"Message was sent by webhook: {webhook.name} (ID: {webhook.id}) - URL: {webhook.url}")
+					if harkerwebhook and str(webhook.url) == str(harkerwebhook):
+						await self.process_harker_message(message)
+
+		
+		# Continue with normal message processing
+		await self.bot.process_commands(message)
+		
+	async def process_harker_message(self, message):
+		"""
+		Custom processing for webhook messages.
+		This is where you can add specific logic for handling webhook content.
+		"""
+		try:
+			# Example processing - you can customize this based on your needs
+			content = message.content
+			author = message.author.display_name if message.author else "Unknown"
+			channel = message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id)
+			
+			logging.info(f"Processing webhook message from {author} in {channel}: {content}")
+			
+			# Authentication successful
+			# Wordpress username: Leonardo
+			# Database ID: 4
+			if "Authentication successful" in content:
+				guildobj = message.guild
+				if guildobj:
+					server = guildobj.name if guildobj else "Unknown"
+				else:
+					logging.warning("Could not retrieve guild information from message.")
+					return
+
+				logging.info("Received authentication success message from Harker webhook.")
+				# split the content into lines and extract the Wordpress username and Database ID
+				lines = content.splitlines()
+				wp_username = None
+				db_id = None
+				for line in lines:
+					if "Wordpress username:" in line:
+						wp_username = line.split("Wordpress username:")[1].strip()
+					elif "Database ID:" in line:
+						db_id = line.split("Database ID:")[1].strip()
+				if wp_username and db_id:
+					logging.info(f"Extracted Wordpress username: {wp_username}, Database ID: {db_id} from webhook message.")
+				else:
+					logging.warning("Failed to extract Wordpress username and Database ID from webhook message. Check the message format.")
+					logging.debug(f"Webhook message content: {content}")
+					return
+				
+				db = renfield_sql()
+				nameid = db.get_nameid_from_wordpress_id(wp_username, server)
+				if not nameid:
+					logging.warning(f"No nameid found in database for Wordpress username {wp_username} in server {message.guild.name}.")
+					return
+				logchannel = get_log_channel(message.guild)
+				if not logchannel:
+					logging.warning(f"No log channel found for server {server}. Cannot send messages about webhook processing.")
+					return
+				
+				# get discord user object from nameid
+				user_global = self.bot.get_user(int(nameid))
+				if not user_global:
+					logging.warning(f"Could not find Discord user with nameid {nameid} for server {server}.")
+					return
+				mutual_guilds = user_global.mutual_guilds
+				if not any(guild.id == message.guild.id for guild in mutual_guilds):
+					logging.warning(f"User {user_global} with nameid {nameid} is not in the same server as the webhook message. Cannot proceed with server member role configuration.")
+					return
+				user = message.guild.get_member(user_global.id)
+
+				wpinfo = curl_get_me(nameid, server)
+				if "code" in wpinfo:
+					code = wpinfo["code"]
+					# error - post a message to the channel depending on the error code
+					if code == 'rest_not_logged_in':
+						await logchannel.send('I\'m sorry Master, I failed to authenticate with the Wordpress API. ')
+					elif code == 'invalid_username':
+						await logchannel.send('I\'m sorry Master, That login name seems to be wrong. Is it spelled correctly?')
+					elif code == 'incorrect_password':
+						await logchannel.send('I\'m sorry Master, That password is incorrect. You need a special "Application Password" and not your normal site login password. Go to {}/wp-admin/profile.php to create one.'.format(wordpress_site))
+					else:
+						await logchannel.send('I\'m sorry Master, I recieved this error message when I tried to connect: {}'.format(wpinfo))
+				else:
+					logging.info(f"Successfully retrieved user information from Wordpress API")
+
+					if user.guild_permissions.administrator:
+						logging.info(f"User {user} is an administrator on the server. Skipping role configuration.")
+						await logchannel.send(f"Account linked for {user.display_name}, but I have not changed their roles because they are an administrator on this server.")
+						return
+					
+					logging.info("Adding user to accepted role if it exists")
+					accepted_role = get_bot_setting("accepted_role", server, None)
+					if accepted_role:
+						role = get(message.guild.roles, name=accepted_role)
+						if role:
+							await user.add_roles(role)
+							logging.info(f"Added accepted role {accepted_role} to user {user}.")
+						else:
+							logging.warning(f"Accepted role {accepted_role} not found on server {server}. Cannot add role to user.")
+
+					# add to any server roles that match their WP account role names
+					addroles = []
+					wproles = wpinfo["roles"]
+					for wprole in wproles:
+						logging.info(f"Checking if Wordpress role {wprole} matches any Discord roles on the server.")
+						for r in message.guild.roles:
+							logging.info(f"Comparing Wordpress role {wprole.upper()} to Discord role {r.name.upper()}")
+							if wprole.upper() == r.name.upper():
+								logging.info(f"Match found for Wordpress role {wprole} and Discord role {r.name}. Adding role to user.")
+								member = user
+								role = get(member.guild.roles, name=r.name)
+								await member.add_roles(role)
+								addroles.append(r.name)
+								break
+					
+
+					extraroles = []
+					for r in message.guild.roles:
+						found = False
+						for role in wproles:
+							if r.name.upper() == role.upper():
+								found = True
+								break
+						if accepted_role is not None and r.name.upper() == accepted_role.upper():
+							found = True
+						if r.name.upper() == "@everyone".upper():
+							found = True
+						if not found:
+							extraroles.append(r.name)
+							
+
+					msg = ""
+					if addroles:
+						msg = 'Thank you. I have added you to the following roles on this server based on your Wordpress roles: {}'.format(', '.join(addroles) + ". ")
+						if accepted_role:
+							msg += "You have also been added to the accepted role '{}'.".format(accepted_role)+". " 
+					if extraroles:
+						msg += "You are also a member of the following Wordpress roles which might need to be removed: {}".format(', '.join(extraroles) + ".")
+					logging.info("Reviewed roles." + msg)
+					if msg:
+						await logchannel.send(msg)
+
+					# Get the info on the character
+					charinfo = get_my_character(nameid, server)
+					if "code" in charinfo:
+						await logchannel.send('I\'m sorry Master, I failed to read your character {}'.format(charinfo["message"]))
+					else:
+						#pprint.pprint(charinfo)
+						
+						# add/update Player Name in member table
+						memberinfo = add_member(nameid, charinfo["result"]["player"], server)
+						
+						# set nickname (but not for the server owners or admins)
+						# does bot have permission to manage nicknames?
+						if guildobj.me.guild_permissions.manage_nicknames:
+							nickname = charinfo["result"]["display_name"]
+							if charinfo["result"]["player"] != "":
+								firstname = charinfo["result"]["player"].split(' ')[0]
+								nickname += " (" + firstname + ")"
+							if charinfo["result"]["pronouns"] != "":
+								nickname += " [" + charinfo["result"]["pronouns"] + "]"
+							try:
+								await user.edit(nick=nickname)
+								await logchannel.send('Thank you {}. I have connected to your wordpress account. Your Discord server nickname has been set to {}.'.format(charinfo["result"]["display_name"], nickname))
+							except Exception as e:
+								print(e)
+								await logchannel.send('Failed to set nickname. Check that the bot has permission to manage nicknames.')
+						else:
+							await logchannel.send('Character has been linked, but I don\'t have permission on this server to set your nickname.')
+
+
+			else:
+				await logchannel.send("I\'m sorry Master, Something went wrong.")
+
+
+			# Add your webhook-specific logic here
+			# For example:
+			# - Parse JSON data if the webhook sends structured data
+			# - Update character statuses
+			# - Send notifications to specific users
+			# - Trigger automated responses
+			
+		except Exception as e:
+			logging.error(f"Error processing webhook message: {str(e)}")
 		
 	async def cog_app_command_error(self, ctx, error):
 		if isinstance(error, discord.app_commands.CheckFailure):
@@ -55,57 +273,11 @@ class WordPressAPI(commands.Cog):
 			return
 		else:
 
-			# Send a HEAD request to the Wordpress site to check if it's reachable
-			try:
-				response = requests.head(wordpress_site, timeout=5)
-				if response.status_code >= 400:
-					await ctx.response.send_message(f"I'm sorry Master, I can't seem to reach the Wordpress site at {wordpress_site}. Please check the URL and that the site is up.")
-					return
-			except requests.RequestException as e:
-				await ctx.response.send_message(f"I'm sorry Master, I can't seem to reach the Wordpress site at {wordpress_site}. Please check the URL and that the site is up. Error: {str(e)}")
+			api_json = get_wordpress_api_endpoint(server)
+			if api_json is None:
+				await ctx.response.send_message("I'm sorry Master, I can't seem to reach the Wordpress Site. Please check that the site URL is correct and that the site is up and running.")
 				return
-			
-			logging.info(f"Successfully reached Wordpress site at {wordpress_site}. Status code: {response.status_code}")
-			
-			# Get the API endpoint from the response headers (if available) or assume it's at /wp-json/
-			header_link = response.headers.get('Link', f"{wordpress_site}/wp-json/")
-			api_endpoint = None
-			if 'rel="https://api.w.org/"' in header_link:
-				# Extract the URL from the Link header
-				parts = header_link.split(',')
-				for part in parts:
-					if 'rel="https://api.w.org/"' in part:
-						# find "link" and extract the URL between <>
-						start = part.find('<') + 1
-						end = part.find('>', start)
-						if start > 0 and end > start:
-							api_endpoint = part[start:end]
-
-						break
-			if not api_endpoint:
-				api_endpoint = f"{wordpress_site}/wp-json/"
-				print("API endpoint not found in headers, defaulting to: {}".format(api_endpoint))
-
-			logging.info(f"Using API endpoint: {api_endpoint}")
-			save_bot_setting("wordpress_api_endpoint", api_endpoint, server)
-
-			# Check response from API endpoint
-			try:
-				api_response = requests.get(api_endpoint, timeout=5)
-				if api_response.status_code >= 400:
-					await ctx.response.send_message(f"I'm sorry Master, I can't seem to reach the Wordpress API endpoint at {api_endpoint}. Please check that the API is available. Status code: {api_response.status_code}")
-					return
-			except requests.RequestException as e:
-				await ctx.response.send_message(f"I'm sorry Master, I can't seem to reach the Wordpress API endpoint at {api_endpoint}. Please check that the API is available. Error: {str(e)}")
-				return
-			
-			logging.info(f"Successfully reached Wordpress API endpoint at {api_endpoint}. Status code: {api_response.status_code}")
-			try:
-				api_json = api_response.json()
-			except json.JSONDecodeError:
-				logging.warning("No JSON body in response.")
-				await ctx.response.send_message(f"I'm sorry Master, I was able to reach the Wordpress API endpoint at {api_endpoint}, but the response did not contain valid JSON. Please check that the API is working correctly.")
-				return
+			api_endpoint = get_bot_setting("wordpress_api_endpoint", server)
 
 			method = None
 			if api_json and 'authentication' in api_json:
@@ -171,7 +343,7 @@ class WordPressAPI(commands.Cog):
 						break
 			else:
 				logging.warning("No namespaces information found in API response. Linking may fail.")
-				await ctx.response.send_message(f"I'm sorry Master, I I could not fine the API namespaces in the response from the Wordpress API endpoint at {api_endpoint}. Please check that the API is working correctly and that the vampire character plugin is installed and active on the Wordpress site.")
+				await ctx.response.send_message(f"I'm sorry Master, I I could not fine the API namespaces in the response from the Wordpress API endpoint. Please check that the API is working correctly and that the vampire character plugin is installed and active on the Wordpress site.")
 				return
 
 			if method == 'application-passwords':
@@ -225,60 +397,6 @@ class WordPressAPI(commands.Cog):
 					return
 
 		
-		# 	status = save_link(nameid, wordpress_id, wordpress_secret, server)
-		# 	if status:
-		# 		# check link
-		# 		wpinfo = curl_get_me(nameid, server)
-		# 		if "code" in wpinfo:
-		# 			code = wpinfo["code"]
-		# 			if code == 'rest_not_logged_in':
-		# 				await ctx.response.send_message('I\'m sorry Master, I don\'t seem to be able to log in to the Wordpress Site for you')
-		# 			elif code == 'invalid_username':
-		# 				await ctx.response.send_message('I\'m sorry Master, That login name seems to be wrong. Is it spelled correctly?')
-		# 			elif code == 'incorrect_password':
-		# 				await ctx.response.send_message('I\'m sorry Master, That password is incorrect. You need a special "Application Password" and not your normal site login password. Go to {}/wp-admin/profile.php to create one.'.format(wordpress_site))
-		# 			else:
-		# 				await ctx.response.send_message('I\'m sorry Master, I recieved this error message when I tried to connect: {}'.format(wpinfo))
-		# 		else:
-		# 			# add to any server roles that match their WP account role names
-		# 			wproles = wpinfo["roles"]
-		# 			for wprole in wproles:
-		# 				for r in ctx.guild.roles:
-		# 					if wprole.upper() == r.name.upper():
-		# 						member = ctx.user
-		# 						role = get(member.guild.roles, name=r.name)
-		# 						await member.add_roles(role)
-					
-		# 			# Get the info on the character
-		# 			charinfo = get_my_character(nameid, server)
-		# 			if "code" in charinfo:
-		# 				await ctx.response.send_message('I\'m sorry Master, I failed to read your character {}'.format(charinfo["message"]))
-		# 			else:
-		# 				#pprint.pprint(charinfo)
-						
-		# 				# add/update Player Name in member table
-		# 				memberinfo = add_member(nameid, charinfo["result"]["player"], server)
-						
-		# 				# set nickname (but not for the server owners or admins)
-		# 				if ctx.guild.me.guild_permissions.manage_nicknames:
-		# 					if ctx.user.guild_permissions.administrator:
-		# 						await ctx.response.send_message('Account has been linked')
-		# 					else:
-		# 						nickname = charinfo["result"]["display_name"]
-		# 						if charinfo["result"]["pronouns"] != "":
-		# 							nickname += " (" + charinfo["result"]["pronouns"] + ")"
-		# 						try:
-		# 							await ctx.user.edit(nick=nickname)
-		# 							await ctx.response.send_message('Thank you {}. I have connected to your wordpress account. Your Discord server nickname has been set to {}.'.format(charinfo["result"]["player"], nickname))
-		# 						except Exception as e:
-		# 							print(e)
-		# 							await ctx.response.send_message('Failed to set nickname. Check that the bot has permission to manage nicknames.'.format(charinfo["result"]["player"], nickname))
-		# 				else:
-		# 					await ctx.response.send_message('Character has been linked, but I don\'t have permission on this server to set your nickname.'.format(charinfo["result"]["player"], nickname))
-
-
-		# 	else:
-		# 		await ctx.response.send_message("I\'m sorry Master, I can't seem to remember that. Something went wrong.")
 
 	@link.error
 	async def link_error(self, ctx, error):
@@ -288,68 +406,127 @@ class WordPressAPI(commands.Cog):
 			await ctx.channel.send("I failed.")
 			raise error
 
-	@check_restapi_active()
-	@app_commands.command(name="whoami", description="Report character information")
-	async def whoami(self, ctx):
-		nameid = ctx.user.id
-		server = ctx.guild.name
-		charinfo = get_my_character(nameid, server)
+	# @check_restapi_active()
+	# @app_commands.command(name="whoami", description="Report character information")
+	# async def whoami(self, ctx):
+	# 	nameid = ctx.user.id
+	# 	server = ctx.guild.name
+	# 	charinfo = get_my_character(nameid, server)
 		
-		if "code" in charinfo:
-			await ctx.response.send_message(charinfo["message"])
-		else:
+	# 	if "code" in charinfo:
+	# 		await ctx.response.send_message(charinfo["message"])
+	# 	else:
 		
-			clan = charinfo["result"]["clan"]
-			player = charinfo["result"]["player"]
-			approved = charinfo["result"]["date_of_approval"]
-			char_status = charinfo["result"]["char_status"]
-			cname = charinfo["result"]["display_name"]
+	# 		clan = charinfo["result"]["clan"]
+	# 		player = charinfo["result"]["player"]
+	# 		approved = charinfo["result"]["date_of_approval"]
+	# 		char_status = charinfo["result"]["char_status"]
+	# 		cname = charinfo["result"]["display_name"]
 			
-			pathrating = charinfo["result"]["path_rating"]
-			path = charinfo["result"]["path_of_enlightenment"]
-			maxwp = charinfo["result"]["willpower"]
+	# 		pathrating = charinfo["result"]["path_rating"]
+	# 		path = charinfo["result"]["path_of_enlightenment"]
+	# 		maxwp = charinfo["result"]["willpower"]
 			
-			#pprint.pprint(charinfo["result"])
+	# 		#pprint.pprint(charinfo["result"])
 		
-			await ctx.user.send("Hello {}. Your character is at {} on {} and has willpower {}. It was approved on {}.".format(player, pathrating, path, maxwp, approved))
-			await ctx.response.send_message("Your {} character is called {} and is currently {}.".format(clan, cname, char_status))
+	# 		await ctx.user.send("Hello {}. Your character is at {} on {} and has willpower {}. It was approved on {}.".format(player, pathrating, path, maxwp, approved))
+	# 		await ctx.response.send_message("Your {} character is called {} and is currently {}.".format(clan, cname, char_status))
 
 
 
-	@check_restapi_active()
-	@app_commands.command(name="whois", description="Report character information of a specific character")
-	async def whois(self, ctx, character: str):
-		nameid = ctx.user.id
-		server = ctx.guild.name
+	# @check_restapi_active()
+	# @app_commands.command(name="whois", description="Report character information of a specific character")
+	# async def whois(self, ctx, character: str):
+	# 	nameid = ctx.user.id
+	# 	server = ctx.guild.name
 		
-		try:
-			charinfo = get_character(server, nameid, character)
-			if "code" in charinfo:
-				await ctx.response.send_message(charinfo["message"])
-			else:
-				if is_storyteller(nameid, ctx.guild.name):
-					clan = charinfo["result"]["clan"]
-					player = charinfo["result"]["player"]
-					approved = charinfo["result"]["date_of_approval"]
-					char_status = charinfo["result"]["char_status"]
-					cname = charinfo["result"]["display_name"]
+	# 	try:
+	# 		charinfo = get_character(server, nameid, character)
+	# 		if "code" in charinfo:
+	# 			await ctx.response.send_message(charinfo["message"])
+	# 		else:
+	# 			if is_storyteller(nameid, ctx.guild.name):
+	# 				clan = charinfo["result"]["clan"]
+	# 				player = charinfo["result"]["player"]
+	# 				approved = charinfo["result"]["date_of_approval"]
+	# 				char_status = charinfo["result"]["char_status"]
+	# 				cname = charinfo["result"]["display_name"]
 					
-					await ctx.response.send_message("Hello {}. The {} character is called {} and is currently {}. They were approved for play on {}.".format(player, clan,cname, char_status, approved))
-				else:
-					clan = charinfo["result"]["clan"]
-					player = charinfo["result"]["player"]
-					char_status = charinfo["result"]["char_status"]
-					cname = charinfo["result"]["display_name"]
-					status = charinfo["result"]["backgrounds"][0]["level"]
-					await ctx.response.send_message("Character {} is of clan {} and is {}. They have status {}.".format(cname, clan, char_status, status))
-		except Exception as e:
-			print(e)
+	# 				await ctx.response.send_message("Hello {}. The {} character is called {} and is currently {}. They were approved for play on {}.".format(player, clan,cname, char_status, approved))
+	# 			else:
+	# 				clan = charinfo["result"]["clan"]
+	# 				player = charinfo["result"]["player"]
+	# 				char_status = charinfo["result"]["char_status"]
+	# 				cname = charinfo["result"]["display_name"]
+	# 				status = charinfo["result"]["backgrounds"][0]["level"]
+	# 				await ctx.response.send_message("Character {} is of clan {} and is {}. They have status {}.".format(cname, clan, char_status, status))
+	# 	except Exception as e:
+	# 		print(e)
 
+def get_wordpress_api_endpoint(server):
+	wordpress_site = get_bot_setting("wordpress_site", server)
+	if wordpress_site == "none":
+		return None
+	else:
+		# Send a HEAD request to the Wordpress site to check if it's reachable
+		try:
+			response = requests.head(wordpress_site, timeout=5)
+			if response.status_code >= 400:
+				logging.error(f"Failed to reach Wordpress site at {wordpress_site}. Status code: {response.status_code}")
+				return None
+		except requests.RequestException as e:
+			logging.error(f"Failed to reach Wordpress site at {wordpress_site}. Error: {str(e)}")
+			return None
+		logging.info(f"Successfully reached Wordpress site at {wordpress_site}. Status code: {response.status_code}")
+		# Get the API endpoint from the response headers (if available) or assume it's at /wp-json/
+		header_link = response.headers.get('Link', f"{wordpress_site}/wp-json/")
+		api_endpoint = None
+		if 'rel="https://api.w.org/"' in header_link:
+			# Extract the URL from the Link header
+			parts = header_link.split(',')
+			for part in parts:
+				if 'rel="https://api.w.org/"' in part:
+					# find "link" and extract the URL between <>
+					start = part.find('<') + 1
+					end = part.find('>', start)
+					if start > 0 and end > start:
+						api_endpoint = part[start:end]
 
+					break
+		if not api_endpoint:
+			api_endpoint = f"{wordpress_site}/wp-json/"
+			logging.info("API endpoint not found in headers, defaulting to: {}".format(api_endpoint))
+			return api_endpoint
+		
+		logging.info(f"Using API endpoint: {api_endpoint}")
+		save_bot_setting("wordpress_api_endpoint", api_endpoint, server)
+
+		# Check response from API endpoint
+		try:
+			api_response = requests.get(api_endpoint, timeout=5)
+			if api_response.status_code >= 400:
+				logging.error(f"Failed to reach Wordpress API endpoint at {api_endpoint}. Status code: {api_response.status_code}")
+				return None
+		except requests.RequestException as e:
+			logging.error(f"Failed to reach Wordpress API endpoint at {api_endpoint}. Error: {str(e)}")
+			return None
+
+		logging.info(f"Successfully reached Wordpress API endpoint at {api_endpoint}. Status code: {api_response.status_code}")
+		try:
+			api_json = api_response.json()
+		except json.JSONDecodeError:
+			logging.warning("No JSON body in response.")
+			return None
+
+		return api_json
+		
 # Check Wordpress API connection
 def curl_checkAPI(server):
-	result = curl_get("wp/v2/users/me", server)
-	return result["code"] != 'rest_not_logged_in'
+	wpjson = get_wordpress_api_endpoint(server)
+	logging.info(f"Checking Wordpress API connection for server {server}. API JSON: {wpjson}")
+	if wpjson is None:
+		return True
+	return False
 
 # Function to run curl GET
 def curl_get(endpoint, server, nameid: str=""):
@@ -412,6 +589,10 @@ def curl_get(endpoint, server, nameid: str=""):
 		result["code"] = "request_failed"
 		result["error"] = str(e)
 	
+	if "code" in result:
+		logging.error(f"Error response from Wordpress API: {result['code']} - {result.get('error', 'No error message provided')}")
+	else:	
+		logging.debug(f"Success response from Wordpress API: {result}")
 	return result
 
 # Get info on wordpress user
@@ -460,7 +641,7 @@ def get_my_character(nameid: str, server: str):
 				characterinfo["code"] = result["code"]
 				if result["code"] == 'no_character':
 					characterinfo["message"] = "Wordpress account {} does not have a character associated with it.".format(wpresult["username"])
-				
+					characterinfo["result"] = None
 				else:
 					characterinfo["message"] = "Username {}, ID {}, uri {}, code '{}': Error: {}".format(wpresult["username"], wpresult["id"], uri, result["code"], result["error"])
 			elif "name" not in result["result"]:
@@ -470,6 +651,41 @@ def get_my_character(nameid: str, server: str):
 				characterinfo["result"] = result["result"]
 
 		return characterinfo
+
+
+def get_active_characters(server: str, nameid: str):
+	characterlist = {}
+
+	if server is None:
+		characterlist["code"] = "no_server"
+		characterlist["message"] = "No server name given"
+		return characterlist
+	if nameid is None:
+		characterlist["code"] = "no_name"
+		characterlist["message"] = "Need ID of discord user to run query"
+		return characterlist
+	
+	wordpress_site = get_bot_setting("wordpress_site", server)
+	if wordpress_site == "none":
+		characterlist["code"] = "not_enabled"
+		characterlist["message"] = "This server is not linked to a Wordpress site"
+		return characterlist
+	
+	logging.info("Getting list of active characters.")
+	uri = "vampire-character/v1/character/"
+	result = curl_get(uri, server, nameid)
+	if "code" in result:
+		characterlist["code"] = result["code"]
+		if result["code"] == 'rest_forbidden':
+			characterlist["message"] = "I'm sorry, your linked Wordpress account needs to be a Storyteller or admin account."
+		elif result["code"] == 'account_not_linked':
+			characterlist["message"] = 'I\'m sorry Master, you first need to use the /link command to link your account.'
+		else:
+			characterlist["message"] = "Query failed."
+	else:
+		characterlist["result"] = result["result"]
+
+	return characterlist
 
 def get_character(server: str, nameid: str, character: str):
 		wordpress_site = get_bot_setting("wordpress_site", server)
