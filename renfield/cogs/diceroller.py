@@ -27,7 +27,8 @@ forminputIDs = {
 	"PursuitButton": 15,
 	"TimescalePulldownActionRow": 16,
 	"IntensityPulldownActionRow": 17,
-	"BackgroundPulldownActionRow": 18
+	"BackgroundPulldownActionRow": 18,
+	"SinsPulldownActionRow": 19
 }
 
 canlift = [
@@ -379,6 +380,42 @@ def sort_character_backgrounds(backgroundlist):
 		The sorted background list
 	"""
 	return sorted(backgroundlist, key=lambda bg: (bg.get('background', ''), bg.get('level', ''), bg.get('sector', ''), bg.get('comment', '')))
+
+
+class RollSinsDropdown(discord.ui.Select):
+	def __init__(self, view: 'RollPage1LayoutView', path: str):	
+
+		options = []
+		if path not in hierarchyofsin:
+			path = "Path of " + path
+		if path in hierarchyofsin:
+			for sin in hierarchyofsin[path]:
+				level = hierarchyofsin[path][sin]
+				if level <= 30:
+					label = "The cardinal sin of {} ({})".format(sin, level)
+				else:
+					label = "{} ({})".format(sin, level)
+				options.append(discord.SelectOption(label=label, value=level))
+
+		if len(options) == 0:
+			options.append(discord.SelectOption(label="Missing path: " + path, value=0))
+
+		# The placeholder is what will be shown when no option is chosen
+		# The min and max values indicate we can only pick one of the three options
+		# The options parameter defines the dropdown options. We defined this above
+		super().__init__(options=options, placeholder="Choose a sin")
+
+	async def callback(self, interaction: discord.Interaction):
+		assert self.view is not None
+		view: RollPage1LayoutView = self.view
+		selectedvalue = self.values[0]
+
+		for opt in self.options:
+			opt.default = False
+			
+		discord.utils.get(self.options, value=int(selectedvalue)).default = True
+
+		await interaction.response.edit_message(view=self.view)
 
 
 class RollVehicleDropdown(discord.ui.Select):
@@ -1221,321 +1258,281 @@ class RollSubmitButtons(discord.ui.ActionRow):
 			self.__view.info.content = "ERROR: select something to roll!"
 		else:
 			max_rating = get_max_level(self.characterdata)
+			info = load_info(self.__view, self.characterdata)
+
+			# -- Create all the inputs we might need --
+			# How much Celerity is added to Dex
+			self.__view.celerityar = discord.ui.ActionRow(id=forminputIDs["CelerityPulldownActionRow"])
+			self.__view.celerityar.add_item(RollAddCelerityDropdown(self.__view, celerity=info["Celerity"]))
+			self.__view.textcel = discord.ui.TextDisplay("Choose how much of your Celerity is being used for Initiative (Total - number of extra rounds)")
+			# Spending blood on Dexterity
+			self.__view.dexterityar = discord.ui.ActionRow(id=forminputIDs["DexterityPulldownActionRow"])
+			self.__view.dexterityar.add_item(RollAddStatBoostDropdown(self.__view, info["Dexterity"], "Dexterity", int(max_rating)))
+			self.__view.textdex = discord.ui.TextDisplay("Choose how much blood you have spent to boost Dexterity")
+			# Spend blood on Stamina
+			self.__view.staminaar = discord.ui.ActionRow(id=forminputIDs["StaminaPulldownActionRow"])
+			self.__view.staminaar.add_item(RollAddStatBoostDropdown(self.__view, info["Stamina"], "Stamina", int(max_rating)))
+			self.__view.textstam = discord.ui.TextDisplay("Choose how much blood you have spent to boost Stamina")
+			# Spend blood on Strength
+			self.__view.strengthar = discord.ui.ActionRow(id=forminputIDs["StrengthPulldownActionRow"])
+			self.__view.strengthar.add_item(RollAddStatBoostDropdown(self.__view, info["Strength"], "Strength", int(max_rating)))
+			self.__view.textstr = discord.ui.TextDisplay("Select any boosts to Strength")
+			# Select Damage type, e.g. Lethal
+			self.__view.damagear = discord.ui.ActionRow(id=forminputIDs["DamageTypePulldownActionRow"])
+			self.__view.damagear.add_item(RollDmgTypeDropdown(self.__view))
+			self.__view.textdmg = discord.ui.TextDisplay("Select the damage type")
+			# Spend willpower
+			self.__view.wpsection = discord.ui.Section("Spend Willpower", accessory=RollCheckButton("Off"), id=forminputIDs["WillpowerButton"])
+			# Frenzy Difficulty
+			self.__view.frenzyar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
+			self.__view.frenzyar.add_item(RollFrenzyDiffDropdown(self.__view, default="provocation:6", clan=info["Clan"]))
+			self.__view.textfrenzy = discord.ui.TextDisplay("Select the difficulty")
+			# Wound penalties
+			self.__view.woundsar = discord.ui.ActionRow(id=forminputIDs["WoundPulldownActionRow"])
+			self.__view.woundsar.add_item(RollWoundDropdown(self.__view))
+			self.__view.woundstr = discord.ui.TextDisplay("Select any wound penalties")
+			# Rotschreck difficulty
+			self.__view.rotsar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
+			self.__view.rotsar.add_item(RollRotschreckDiffDropdown(self.__view, default="bonfire:6"))
+			self.__view.textrots = discord.ui.TextDisplay("Select the difficulty")
+			# Has a speciality
+			self.__view.speciality = discord.ui.Section("Have a relevant speciality", accessory=RollCheckButton("Off"), id=forminputIDs["SpecialityButton"])
+			# Choose vehicle
+			self.__view.vehiclear = discord.ui.ActionRow(id=forminputIDs["VehiclePulldownActionRow"])
+			self.__view.vehiclear.add_item(RollVehicleDropdown(self.__view))
+			self.__view.vehicletext = discord.ui.TextDisplay("Select the vehicle to drive")
+			# Choose Dex or Wits
+			self.__view.drivestattext = discord.ui.TextDisplay("Select the attribute to use")
+			self.__view.drivestatar = discord.ui.ActionRow(id=forminputIDs["DriveStatPulldownActionRow"])
+			self.__view.drivestatar.add_item(RollDriveStatDropdown(self.__view))
+			# +1 diff rain
+			self.__view.weather = discord.ui.Section("+1 difficulty for bad weather", accessory=RollCheckButton("Off"), id=forminputIDs["WeatherButton"])
+			# +1 diff heavy traffic
+			self.__view.traffic = discord.ui.Section("+1 difficulty for heavy traffic", accessory=RollCheckButton("Off"), id=forminputIDs["TrafficButton"])
+			# +1 diff pursuit
+			self.__view.pursuit = discord.ui.Section("+1 difficulty for pursuit", accessory=RollCheckButton("Off"), id=forminputIDs["PursuitButton"])
+			# +1 diff for every 10 mph over safe speed
+			self.__view.speedtext = discord.ui.TextDisplay("Select the speed")
+			self.__view.speedar = discord.ui.ActionRow(id=forminputIDs["SpeedPulldownActionRow"])
+			self.__view.speedar.add_item(RollSpeedDropdown(self.__view))
+			# Duration
+			self.__view.difftimear = discord.ui.ActionRow(id=forminputIDs["TimescalePulldownActionRow"])
+			self.__view.difftimear.add_item(RollAuspexTimescaleDropdown(self.__view))
+			self.__view.difftimestr = discord.ui.TextDisplay("Select how long ago the impression was made")
+			# Intensity of Impression
+			self.__view.diffintenar = discord.ui.ActionRow(id=forminputIDs["IntensityPulldownActionRow"])
+			self.__view.diffintenar.add_item(RollAuspexIntensityDropdown(self.__view))
+			self.__view.diffintenstr = discord.ui.TextDisplay("Select the strength of impression")
+			# list of backgrounds - name, spec, sector, level
+			self.__view.bgar = discord.ui.ActionRow(id=forminputIDs["BackgroundPulldownActionRow"])
+			self.__view.bgar.add_item(RollBackgroundDropdown(self.__view, self.characterdata))
+			self.__view.bgtext = discord.ui.TextDisplay("Select the background")
+			# Hierarchy of Sins
+			self.__view.sinsar = discord.ui.ActionRow(id=forminputIDs["SinsPulldownActionRow"])
+			self.__view.sinsar.add_item(RollSinsDropdown(self.__view, info["Path of Enlightenment Info"]))
+			self.__view.textsins = discord.ui.TextDisplay("I have committed...")
+
+			inputs = {
+				"celerity": 0,
+				"dexterity": 0,
+				"stamina": 0,
+				"willpower": 0,
+				"difficulty": 0,
+				"damage_type": 0,
+				"frenzy": 0,
+				"wounds": 0,
+				"strength": 0,
+				"rotschreck": 0,
+				"speciality": 0,
+				"vehicle": 0,
+				"drivestat": 0,
+				"weather": 0,
+				"traffic": 0,
+				"pursuit": 0,
+				"speed": 0,
+				"duration": 0,
+				"intensity": 0,
+				"backgrounds": 0
+			}
 
 			if selection == "Initiative":
-				celerity = get_discipline_level(self.characterdata, "Celerity")
-							
 				self.__view.clear_items()
-				# display = discord.ui.Container(self.__view.hello, self.__view.display_detail, self.__view.display_private)
-				# self.__view.add_item(display)
+				self.__view.texthelp = discord.ui.TextDisplay("Dexterity + Wits + [Celerity] + 1D10")
 
-				self.__view.celerityar = discord.ui.ActionRow(id=forminputIDs["CelerityPulldownActionRow"])
-				self.__view.celerityar.add_item(RollAddCelerityDropdown(self.__view, celerity=celerity))
-				
-				if celerity == 0:
-					self.__view.textinfo = discord.ui.TextDisplay("You do not have any Celerity to add")
-				else:
-					self.__view.textinfo = discord.ui.TextDisplay("Choose how much of your Celerity is being used for Initiative (Total - number of extra rounds)")
+				if info["Celerity"] > 0:
+					inputs["celerity"] = 1
 
-				dexterity = get_attribute_level(self.characterdata, "Dexterity")
-				if dexterity == 0:
-					self.__view.textinfo2 = discord.ui.TextDisplay("Could not work out dexterity level")
-				else:
-					self.__view.textinfo2 = discord.ui.TextDisplay("Choose how much blood you have spent to boost Dexterity")
+				inputs["dexterity"] = 1
 
-				self.__view.dexterityar = discord.ui.ActionRow(id=forminputIDs["DexterityPulldownActionRow"])
-				self.__view.dexterityar.add_item(RollAddStatBoostDropdown(self.__view, int(dexterity), "Dexterity", int(max_rating)))
-
-				self.__view.texthelp = discord.ui.TextDisplay("Initiative = D10 + Dex + Wits + [Celerity]")
-				self.__view.container = discord.ui.Container(self.__view.textinfo, self.__view.celerityar, self.__view.textinfo2, self.__view.dexterityar)
-				self.__view.add_item(self.__view.container)
 			elif selection == "Soak":
-				stamina = get_attribute_level(self.characterdata, "Stamina")
-				#fortitude = get_discipline_level(self.characterdata, "Fortitude")
-
 				self.__view.clear_items()
-				# spending blood on stamina
-				self.__view.staminaar = discord.ui.ActionRow(id=forminputIDs["StaminaPulldownActionRow"])
-				self.__view.staminaar.add_item(RollAddStatBoostDropdown(self.__view, int(stamina), "Stamina", int(max_rating)))
-				self.__view.textstam = discord.ui.TextDisplay("Choose how much blood you have spent to boost Stamina")
-
-				# Select damage type
-				self.__view.damagear = discord.ui.ActionRow(id=forminputIDs["DamageTypePulldownActionRow"])
-				self.__view.damagear.add_item(RollDmgTypeDropdown(self.__view))
-				self.__view.textdmg = discord.ui.TextDisplay("Select the damage type")
-
-				# Spend willpower
-				self.__view.wpsection = discord.ui.Section("Spend Willpower", accessory=RollCheckButton("Off"), id=forminputIDs["WillpowerButton"])
-
-				self.__view.container = discord.ui.Container(
-					self.__view.textstam, 
-					self.__view.staminaar,
-					self.__view.textdmg, 
-					self.__view.damagear,
-					self.__view.wpsection
-				)
-				self.__view.add_item(self.__view.container)
 				self.__view.texthelp = discord.ui.TextDisplay("Stamina and Fortitude are used to soak damage")
+
+				inputs["stamina"] = 1
+				inputs["damage_type"] = 1
+				inputs["willpower"] = 1
+
 			elif selection == "Willpower":
 				self.__view.clear_items()
-				self.__view.diffar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
-				self.__view.diffar.add_item(RollDiffDropdown(self.__view, default=9))
-				self.__view.text = discord.ui.TextDisplay("Select the difficulty")
-
-				self.__view.container = discord.ui.Container(
-					self.__view.text, 
-					self.__view.diffar
-				)
-				self.__view.add_item(self.__view.container)
 				self.__view.texthelp = discord.ui.TextDisplay("Roll Willpower")
+
+				inputs["difficulty"] = 9
+	
 			elif selection == "Resist Frenzy":
 				self.__view.clear_items()
-
-				clan = self.characterdata["private_clan"]
+				self.__view.texthelp = discord.ui.TextDisplay("5 successes in total are required to resist a frenzy, but these can be accumulated.")
 
 				# Spend Willpower (except if you are Brujah)
-				if clan != "Brujah":
-					self.__view.wpsection = discord.ui.Section("Spend Willpower", accessory=RollCheckButton("Off"), id=forminputIDs["WillpowerButton"])
+				if info["Clan"] != "Brujah":
+					inputs["willpower"] = 1
 
-				# Adjust difficulty
-				self.__view.diffar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
-				self.__view.diffar.add_item(RollFrenzyDiffDropdown(self.__view, default="provocation:6", clan=clan))
-				self.__view.text = discord.ui.TextDisplay("Select the difficulty")
-				
-				if clan == "Brujah":
-					self.__view.container = discord.ui.Container(
-						self.__view.text, 
-						self.__view.diffar
-					)
-				else:
-					self.__view.container = discord.ui.Container(
-						self.__view.wpsection,
-						self.__view.text, 
-						self.__view.diffar
-					)
+				inputs["frenzy"] = 1				
 
-				self.__view.add_item(self.__view.container)
-				self.__view.texthelp = discord.ui.TextDisplay("5 successes in total are required to resist a frenzy, but these can be accumulated.")
-			
 			elif selection == "Feats of Strength":
 				self.__view.clear_items()
-				# Wound penalties
-				
-				self.__view.woundsar = discord.ui.ActionRow(id=forminputIDs["WoundPulldownActionRow"])
-				self.__view.woundsar.add_item(RollWoundDropdown(self.__view))
-				self.__view.woundstr = discord.ui.TextDisplay("Select any wound penalties")
+				self.__view.texthelp = discord.ui.TextDisplay("Strength + Potence - Wound penalties + Willpower roll, diff 9")				
 
-				# Boosted Strength
-				strength = get_attribute_level(self.characterdata, "Strength")
-				self.__view.strengthar = discord.ui.ActionRow(id=forminputIDs["StrengthPulldownActionRow"])
-				self.__view.strengthar.add_item(RollAddStatBoostDropdown(self.__view, int(strength), "Strength", int(max_rating)))
-				self.__view.textstr = discord.ui.TextDisplay("Select any boosts to Strength")
-
-				self.__view.container = discord.ui.Container(
-					self.__view.textstr, 
-					self.__view.strengthar,
-					self.__view.woundstr,
-					self.__view.woundsar
-				)
-				self.__view.add_item(self.__view.container)
-				self.__view.texthelp = discord.ui.TextDisplay("Strength + Potence - Wound penalties + Willpower roll, diff 9")
+				inputs["strength"] = 1				
+				inputs["wounds"] = 1				
 
 			elif selection == "Rotschreck":
 				self.__view.clear_items()
-
-				self.__view.wpsection = discord.ui.Section("Spend Willpower", accessory=RollCheckButton("Off"), id=forminputIDs["WillpowerButton"])
-
-				# Adjust difficulty
-				self.__view.diffar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
-				self.__view.diffar.add_item(RollRotschreckDiffDropdown(self.__view, default="bonfire:6"))
-				self.__view.text = discord.ui.TextDisplay("Select the difficulty")
-				
-				self.__view.container = discord.ui.Container(
-					self.__view.wpsection,
-					self.__view.text, 
-					self.__view.diffar
-				)
-
-				self.__view.add_item(self.__view.container)
 				self.__view.texthelp = discord.ui.TextDisplay("5 successes in total are required to avoid Rotschreck, but these can be accumulated.")
+
+				inputs["willpower"] = 1
+				inputs["rotschreck"] = 1
 
 			elif selection == "Driving":
 				self.__view.clear_items()
-
-				# spend willpower
-				self.__view.wpsection = discord.ui.Section("Spend Willpower", accessory=RollCheckButton("Off"), id=forminputIDs["WillpowerButton"])
-
-				# Choose Dex or Wits
-				self.__view.drivestattext = discord.ui.TextDisplay("Select the attribute to use")
-				self.__view.drivestatar = discord.ui.ActionRow(id=forminputIDs["DriveStatPulldownActionRow"])
-				self.__view.drivestatar.add_item(RollDriveStatDropdown(self.__view))
-
-				# Spend blood on Dex (if using dex)
-				dexterity = get_attribute_level(self.characterdata, "Dexterity")
-				self.__view.dexterityar = discord.ui.ActionRow(id=forminputIDs["DexterityPulldownActionRow"])
-				self.__view.dexterityar.add_item(RollAddStatBoostDropdown(self.__view, int(dexterity), "Dexterity", int(max_rating)))
-				self.__view.textstr = discord.ui.TextDisplay("Select any blood boosts to Dexterity")
-				# How much celerity to add (if using dex)
-				celerity = get_discipline_level(self.characterdata, "Celerity")
-				self.__view.celerityar = discord.ui.ActionRow(id=forminputIDs["CelerityPulldownActionRow"])
-				self.__view.celerityar.add_item(RollAddCelerityDropdown(self.__view, celerity=celerity))
-				self.__view.celeritystr = discord.ui.TextDisplay("Select any Celerity boosts to Dexterity")
-				# Wound penalties
-				self.__view.woundsar = discord.ui.ActionRow(id=forminputIDs["WoundPulldownActionRow"])
-				self.__view.woundsar.add_item(RollWoundDropdown(self.__view))
-				self.__view.woundstr = discord.ui.TextDisplay("Select any wound penalties")
-				# Speciality
-				self.__view.speciality = discord.ui.Section("Have a relevant speciality", accessory=RollCheckButton("Off"), id=forminputIDs["SpecialityButton"])
-
-				self.__view.container = discord.ui.Container(
-					self.__view.wpsection,
-					self.__view.drivestattext, 
-					self.__view.drivestatar, 
-					self.__view.textstr, 
-					self.__view.dexterityar, 
-					self.__view.celeritystr, 
-					self.__view.celerityar, 
-					self.__view.woundstr, 
-					self.__view.woundsar,
-					self.__view.speciality
-				)
-				self.__view.add_item(self.__view.container)
-
-				# Choose vehicle
-				self.__view.vehiclear = discord.ui.ActionRow(id=forminputIDs["VehiclePulldownActionRow"])
-				self.__view.vehiclear.add_item(RollVehicleDropdown(self.__view))
-				#self.__view.vehicletext = discord.ui.TextDisplay("Select the vehicle to drive")
-
-				# Base difficulty
-				self.__view.diffar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
-				self.__view.diffar.add_item(RollDiffDropdown(self.__view, default=6))
-				self.__view.difftext = discord.ui.TextDisplay("Select the base difficulty")
-				# +1 diff for every 10 mph over safe speed
-				self.__view.speedar = discord.ui.ActionRow(id=forminputIDs["SpeedPulldownActionRow"])
-				self.__view.speedar.add_item(RollSpeedDropdown(self.__view))
-				# +1 diff rain
-				self.__view.weather = discord.ui.Section("+1 difficulty for bad weather", accessory=RollCheckButton("Off"), id=forminputIDs["WeatherButton"])
-				# +1 diff heavy traffic
-				self.__view.traffic = discord.ui.Section("+1 difficulty for heavy traffic", accessory=RollCheckButton("Off"), id=forminputIDs["TrafficButton"])
-				# +1 diff pursuit
-				self.__view.pursuit = discord.ui.Section("+1 difficulty for pursuit", accessory=RollCheckButton("Off"), id=forminputIDs["PursuitButton"])
-				# Max difficulty 9?
 				self.__view.texthelp = discord.ui.TextDisplay("Select your options to customise your driving roll.")
-				self.__view.containerdiffs = discord.ui.Container(
-					#self.__view.vehicletext,
-					self.__view.vehiclear,
-					self.__view.difftext,
-					self.__view.diffar,
-					self.__view.speedar,
-					self.__view.weather,
-					self.__view.traffic,
-					self.__view.pursuit
-				)
-				self.__view.add_item(self.__view.containerdiffs)
+
+				inputs["willpower"] = 1
+				inputs["vehicle"] = 1
+				inputs["drivestat"] = 1
+
+				inputs["dexterity"] = 1
+				if info["Celerity"] > 0:
+					inputs["celerity"] = 1
+				inputs["wounds"] = 1
+				inputs["speciality"] = 1
+
+				inputs["difficulty"] = 6
+				inputs["speed"] = 1
+				inputs["weather"] = 1
+				inputs["traffic"] = 1
+				inputs["pursuit"] = 1
 
 
 			elif selection == "Aura Perception":
 				self.__view.clear_items()
-
-				# willpower
-				self.__view.wpsection = discord.ui.Section("Spend Willpower", accessory=RollCheckButton("Off"), id=forminputIDs["WillpowerButton"])
-
-				# speciality
-				self.__view.speciality = discord.ui.Section("Have a relevant speciality", accessory=RollCheckButton("Off"), id=forminputIDs["SpecialityButton"])
-
-				# wound penalties
-				self.__view.woundsar = discord.ui.ActionRow(id=forminputIDs["WoundPulldownActionRow"])
-				self.__view.woundsar.add_item(RollWoundDropdown(self.__view))
-				self.__view.woundstr = discord.ui.TextDisplay("Select any wound penalties")
-
-				self.__view.container = discord.ui.Container(
-					self.__view.wpsection,
-					self.__view.speciality,
-					self.__view.woundstr, 
-					self.__view.woundsar
-				)
-				self.__view.add_item(self.__view.container)
 				self.__view.texthelp = discord.ui.TextDisplay("Select options to customise the roll - Perception + Empathy, diff 8.")
+
+				inputs["willpower"] = 1
+				inputs["speciality"] = 1
+				inputs["wounds"] = 1
+
 			elif selection == "Spirits Touch":
 				self.__view.clear_items()
-
-				# Duration
-				self.__view.difftimear = discord.ui.ActionRow(id=forminputIDs["TimescalePulldownActionRow"])
-				self.__view.difftimear.add_item(RollAuspexTimescaleDropdown(self.__view))
-				self.__view.difftimestr = discord.ui.TextDisplay("Select how long ago the impression was made")
-				# Intensity of Impression
-				self.__view.diffintenar = discord.ui.ActionRow(id=forminputIDs["IntensityPulldownActionRow"])
-				self.__view.diffintenar.add_item(RollAuspexIntensityDropdown(self.__view))
-				self.__view.diffintenstr = discord.ui.TextDisplay("Select the strength of impression")
-
-				self.__view.diffcontainer = discord.ui.Container(
-					self.__view.difftimestr,
-					self.__view.difftimear,
-					self.__view.diffintenstr,
-					self.__view.diffintenar
-				)
-				self.__view.add_item(self.__view.diffcontainer)
-
-				# willpower
-				self.__view.wpsection = discord.ui.Section("Spend Willpower", accessory=RollCheckButton("Off"), id=forminputIDs["WillpowerButton"])
-
-				# speciality
-				self.__view.speciality = discord.ui.Section("Have a relevant speciality", accessory=RollCheckButton("Off"), id=forminputIDs["SpecialityButton"])
-
-				# wound penalties
-				self.__view.woundsar = discord.ui.ActionRow(id=forminputIDs["WoundPulldownActionRow"])
-				self.__view.woundsar.add_item(RollWoundDropdown(self.__view))
-				self.__view.woundstr = discord.ui.TextDisplay("Select any wound penalties")
-
-				self.__view.container = discord.ui.Container(
-					self.__view.wpsection,
-					self.__view.speciality,
-					self.__view.woundstr, 
-					self.__view.woundsar
-				)
-				self.__view.add_item(self.__view.container)
 				self.__view.texthelp = discord.ui.TextDisplay("Select options to customise the roll - Perception + Empathy.")
+
+				inputs["willpower"] = 1
+				inputs["speciality"] = 1
+				inputs["wounds"] = 1
+				inputs["duration"] = 1
+				inputs["intensity"] = 1
 			
 			elif selection == "Backgrounds":
 				self.__view.clear_items()
-
-				# list of backgrounds - name, spec, sector, level
-				self.__view.bgar = discord.ui.ActionRow(id=forminputIDs["BackgroundPulldownActionRow"])
-				self.__view.bgar.add_item(RollBackgroundDropdown(self.__view, self.characterdata))
-				self.__view.bgtext = discord.ui.TextDisplay("Select the background")
-				self.__view.containerbg = discord.ui.Container(
-					self.__view.bgtext,
-					self.__view.bgar
-				)	
-				self.__view.add_item(self.__view.containerbg)
-
-				# wound penalties
-				self.__view.woundsar = discord.ui.ActionRow(id=forminputIDs["WoundPulldownActionRow"])
-				self.__view.woundsar.add_item(RollWoundDropdown(self.__view))
-				self.__view.woundstr = discord.ui.TextDisplay("Select any wound penalties")
-				# willpower
-				self.__view.wpsection = discord.ui.Section("Spend Willpower", accessory=RollCheckButton("Off"), id=forminputIDs["WillpowerButton"])
-				# speciality
-				self.__view.speciality = discord.ui.Section("Have a relevant speciality", accessory=RollCheckButton("Off"), id=forminputIDs["SpecialityButton"])
-				# difficulty
-				self.__view.diffar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
-				self.__view.diffar.add_item(RollDiffDropdown(self.__view, default=6))
-				self.__view.text = discord.ui.TextDisplay("Select the difficulty")
-
-				self.__view.container = discord.ui.Container(
-					self.__view.wpsection,
-					self.__view.speciality,
-					self.__view.text, 
-					self.__view.diffar,
-					self.__view.woundstr,
-					self.__view.woundsar
-				)			
-				self.__view.add_item(self.__view.container)
-
 				self.__view.texthelp = discord.ui.TextDisplay("Select options to customise the roll.")
 
+				inputs["backgrounds"] = 1
+				inputs["wounds"] = 1
+				inputs["willpower"] = 1
+				inputs["speciality"] = 1
+				inputs["difficulty"] = 6
+
+			elif selection == "Degeneration":
+				self.__view.clear_items()
+				self.__view.texthelp = discord.ui.TextDisplay("Select options to customise the roll.")
+				inputs["sins"] = 1
 			else:
 				self.__view.texthelp = discord.ui.TextDisplay("{} is not supported yet".format(selection))
+
+			# Stats
+			self.__view.container1 = discord.ui.Container()
+			if inputs["celerity"]:
+				self.__view.container1.add_item(self.__view.textcel)
+				self.__view.container1.add_item(self.__view.celerityar)
+			if inputs["dexterity"]:
+				self.__view.container1.add_item(self.__view.textdex)
+				self.__view.container1.add_item(self.__view.dexterityar)
+			if inputs["stamina"]:
+				self.__view.container1.add_item(self.__view.textstam)
+				self.__view.container1.add_item(self.__view.staminaar)
+			if inputs["strength"]:
+				self.__view.container1.add_item(self.__view.textstr)
+				self.__view.container1.add_item(self.__view.strengthar)
+			# Misc pull-downs
+			if inputs["drivestat"]:
+				self.__view.container1.add_item(self.__view.drivestattext)
+				self.__view.container1.add_item(self.__view.drivestatar)
+			if inputs["vehicle"]:
+				#self.__view.container1.add_item(self.__view.vehicletext)
+				self.__view.container1.add_item(self.__view.vehiclear)
+			if inputs["speed"]:
+				#self.__view.container1.add_item(self.__view.speedtext)
+				self.__view.container1.add_item(self.__view.speedar)
+			if inputs["backgrounds"]:
+				self.__view.container1.add_item(self.__view.bgtext)
+				self.__view.container1.add_item(self.__view.bgar)
+			if inputs["difficulty"]:
+			# Select Difficulty
+				self.__view.diffar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
+				self.__view.diffar.add_item(RollDiffDropdown(self.__view, default=inputs["difficulty"]))
+				self.__view.textdiff = discord.ui.TextDisplay("Select the difficulty")
+				self.__view.container1.add_item(self.__view.textdiff)
+				self.__view.container1.add_item(self.__view.diffar)
+			if inputs["damage_type"]:
+				self.__view.container1.add_item(self.__view.textdmg)
+				self.__view.container1.add_item(self.__view.damagear)
+			if inputs["frenzy"]:
+				self.__view.container1.add_item(self.__view.textfrenzy)
+				self.__view.container1.add_item(self.__view.frenzyar)
+			if inputs["rotschreck"]:
+				self.__view.container1.add_item(self.__view.textrots)
+				self.__view.container1.add_item(self.__view.rotsar)
+			if inputs["wounds"]:
+				self.__view.container1.add_item(self.__view.woundstr)
+				self.__view.container1.add_item(self.__view.woundsar)
+			if inputs["duration"]:
+				self.__view.container1.add_item(self.__view.difftimestr)
+				self.__view.container1.add_item(self.__view.difftimear)
+			if inputs["intensity"]:
+				self.__view.container1.add_item(self.__view.diffintenstr)
+				self.__view.container1.add_item(self.__view.diffintenar)
+			if inputs["sins"]:
+				self.__view.container1.add_item(self.__view.textsins)
+				self.__view.container1.add_item(self.__view.sinsar)
+
+			if len(self.__view.container1.children) > 0:
+				self.__view.add_item(self.__view.container1)
+
+			# Check boxes
+			self.__view.container2 = discord.ui.Container()
+			if inputs["willpower"]:
+				self.__view.container2.add_item(self.__view.wpsection)
+			if inputs["speciality"]:
+				self.__view.container2.add_item(self.__view.speciality)
+			if inputs["weather"]:
+				self.__view.container2.add_item(self.__view.weather)
+			if inputs["traffic"]:
+				self.__view.container2.add_item(self.__view.traffic)
+			if inputs["pursuit"]:
+				self.__view.container2.add_item(self.__view.pursuit)
+
+			if len(self.__view.container2.children) > 0:
+				self.__view.add_item(self.__view.container2)
+
 
 			self.__view.rollselectaction = discord.ui.ActionRow()
 			self.__view.rollselectaction.add_item(RollSelectionButton("Roll "+ selection, characterdata=self.characterdata))
@@ -1837,16 +1834,7 @@ class RollSelectionButton(discord.ui.Button):
 			str = format_willpower(result, info)
 
 		elif self.label == "Roll Resist Frenzy":
-
-			willpowerspent = view.wpsection.accessory.label
-			difficulty_str = discord.utils.get(view.diffar.children[0].options, default=True).value
-			difficulty = int(difficulty_str.split(':')[1])
-			info["difficulty"] = discord.utils.get(view.diffar.children[0].options, default=True).label
-			selfcontrol = get_attribute_level(self.characterdata, "Self Control")
-			if self.characterdata["clan"] == "Brujah":
-				willpowerspent = "Off"
-			result = roll_pool(pool=int(selfcontrol),diff=difficulty, willpower=willpowerspent)
-			info["Self Control"] = selfcontrol
+			result = roll_pool(pool=info["Self Control"],diff=info["Difficulty"], willpower=info["Willpower OnOff"])
 			str = format_frenzy(result, info)
 
 		elif self.label == "Roll Feats of Strength":
@@ -1969,6 +1957,11 @@ class RollSelectionButton(discord.ui.Button):
 				   result["rolls"],
 				   breakdown
 				   )
+
+		elif self.label == "Roll Degeneration":
+			statlevel = info[info["Path Attribute"]]
+			result = roll_pool(statlevel, 8)
+			str = format_degeneration(result, info)			
 
 		else:
 			str = self.label + " is unsupported"
@@ -2377,7 +2370,7 @@ def format_drive(result, info):
 	success = int(result["total"])
 
 	character_name = info["character_name"]
-	celerity = info["Celerity"]
+	celerity = info["Effective Celerity"]
 	driving = info["Driving"]
 	stat = info["Driving Ability"]
 	statlevel = info[stat]
@@ -2730,6 +2723,7 @@ def load_info(view: RollPage1LayoutView, characterdata):
 
 	info["detail"] = view.display_detail.accessory.label
 	info["character_name"] = characterdata["name"]
+	info["Clan"] = characterdata["private_clan"]
 	info["damage_type"] = "Lethal"
 	info["Willpower OnOff"] = "Off"
 	info["Speciality OnOff"] = "Off"
@@ -2762,6 +2756,8 @@ def load_info(view: RollPage1LayoutView, characterdata):
 
 	info["Path of Enlightenment Info"] = characterdata["path_of_enlightenment"]
 	info["Path of Enlightenment"] = int(characterdata["path_rating"])
+	info["Sins"] = 0
+	info["Sins Info"] = ""
 
 	info["Empathy"] = int(get_level_from_character(characterdata, "Empathy", "abilites"))
 	info["Driving"] = int(get_level_from_character(characterdata, "Drive", "abilites"))
@@ -2897,6 +2893,15 @@ def load_info(view: RollPage1LayoutView, characterdata):
 				value_str = option.value
 				info["Background"] = int(value_str.split(':')[0])
 				info["Background Info"] = option.label
+		elif input.id == forminputIDs["SinsPulldownActionRow"]:
+			select = input.children[0]
+			option = discord.utils.get(select.options, default=True)
+			if option is None:
+				info["Sins"] = None
+			else:
+				value_str = option.value
+				info["Sins"] = int(value_str)
+				info["Sins Info"] = option.label
 
 	info["blood"] = {}
 	info["blood"]["Dexterity"] =  info["Effective Dexterity"] - info["Dexterity"]
