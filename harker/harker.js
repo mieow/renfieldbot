@@ -1,12 +1,19 @@
 // Load environment variables from .env file
 const path = require('path')
 const fs = require('fs')
+const crypto = require('crypto')
 require('dotenv').config({ path: path.join('/home/renfield/discord', '.env') })
 require('uuid')
 const oauthSignature = require('oauth-signature');
 const express = require('express')
 const helper = express()
 const port = process.env.PORT || 1435
+
+// Validate required environment variables
+if (!process.env.DATABASE_USERNAME || !process.env.DATABASE_PASSWORD) {
+  logError('Missing required environment variables: DATABASE_USERNAME or DATABASE_PASSWORD')
+  process.exit(1)
+}
 
 // Logger setup
 const logFile = '/home/renfield/logs/harker.log'
@@ -17,15 +24,17 @@ if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true })
 }
 
-function log(message) {
+function log(...args) {
   const timestamp = new Date().toISOString()
+  const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ')
   const logMessage = `[${timestamp}] ${message}`
   console.log(logMessage)
   fs.appendFileSync(logFile, logMessage + '\n')
 }
 
-function logError(message) {
+function logError(...args) {
   const timestamp = new Date().toISOString()
+  const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ')
   const logMessage = `[${timestamp}] ERROR: ${message}`
   console.error(logMessage)
   fs.appendFileSync(logFile, logMessage + '\n')
@@ -40,6 +49,44 @@ const dbConfig = {
 }
 
 let pool;
+
+// Rate limiting and state tracking
+const requestCache = new Map(); // Track requests by IP
+const stateTokens = new Map(); // Track valid state tokens
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX = 10; // 10 requests per window
+const STATE_EXPIRY = 300000; // 5 minutes
+const FETCH_TIMEOUT = 5000; // 5 seconds
+
+function isRateLimited(ip) {
+  const now = Date.now()
+  if (!requestCache.has(ip)) {
+    requestCache.set(ip, [])
+  }
+  const requests = requestCache.get(ip).filter(t => now - t < RATE_LIMIT_WINDOW)
+  requestCache.set(ip, requests)
+  if (requests.length >= RATE_LIMIT_MAX) return true
+  requests.push(now)
+  requestCache.set(ip, requests)
+  return false
+}
+
+function generateStateToken() {
+  const token = crypto.randomBytes(32).toString('hex')
+  stateTokens.set(token, Date.now())
+  return token
+}
+
+function validateStateToken(token) {
+  if (!stateTokens.has(token)) return false
+  const createdAt = stateTokens.get(token)
+  if (Date.now() - createdAt > STATE_EXPIRY) {
+    stateTokens.delete(token)
+    return false
+  }
+  stateTokens.delete(token)
+  return true
+}
 
 // Initialize MariaDB pool using dynamic import
 (async () => {
@@ -58,13 +105,35 @@ helper.listen(port, () => {
 })
 
 helper.get('/auth-callback/', async (req, res) => {
-  log('Received auth callback with query:', req.query)
+  const clientIp = req.ip
+  
+  // Check rate limiting
+  if (isRateLimited(clientIp)) {
+    log('Rate limit exceeded for IP:', clientIp)
+    return res.status(429).send('Too many requests')
+  }
 
-  const { oauth_token, oauth_verifier, wp_scope } = req.query
-  log('OAuth Token:', oauth_token)
-  log('OAuth Verifier:', oauth_verifier)
-  log('WP Scope:', wp_scope)
-  let wordpressUsername = '';   // ← outer scope
+  log('Received auth callback')
+
+  const { oauth_token, oauth_verifier, state } = req.query
+  
+  // Input validation
+  if (!oauth_token || typeof oauth_token !== 'string' || oauth_token.length === 0) {
+    log('Invalid oauth_token provided')
+    return res.status(400).send('Invalid request')
+  }
+  if (!oauth_verifier || typeof oauth_verifier !== 'string' || oauth_verifier.length === 0) {
+    log('Invalid oauth_verifier provided')
+    return res.status(400).send('Invalid request')
+  }
+  // Validate state if present (optional for backward compatibility)
+  if (state && !validateStateToken(state)) {
+    log('Invalid or expired state token')
+    return res.status(400).send('Invalid state token')
+  }
+  
+  let wordpressUsername = ''
+  let userId, server, oauth_nonce, oauth_timestamp, wordpress_users_api_route_result, urlwithParams
 
   // select * from wp_link where token = 'oauth_token'
   // if token exists, update the record with the new oauth_verifier
@@ -81,17 +150,17 @@ helper.get('/auth-callback/', async (req, res) => {
 
     // check that one 1 record is returned
     if (rows.length === 0) {
-      log('No matching token found in database')
+      log('Token lookup failed')
       return res.status(400).send('Invalid token')
     } else if (rows.length > 1) {
-      log('Multiple matching tokens found in database')
-      return res.status(500).send('Database error: multiple records found')
+      logError('Database integrity error: multiple token records')
+      return res.status(500).send('Server error')
     }
 
     userId = rows[0].id
     const requestTokenSecret = rows[0].secret
     server = rows[0].server
-    log('Matching token found for user ID:', userId, ' on server:', server)
+    log('Token lookup successful')
 
     // do the next access query to get the new access token and secret using the oauth_verifier
     // if successful, update the database record with the new access token and secret, and set auth_status to "linked"
@@ -102,43 +171,36 @@ helper.get('/auth-callback/', async (req, res) => {
     // --------------------------------------------------------
 
     const accessUrlRow = await conn.query("SELECT setting_value FROM serversettings WHERE server = ? AND setting_name = 'oauth_access_url'", [server])
-    if (accessUrlRow.length === 0) {
-      log('No access URL found in database for server:', server)
-      return res.status(500).send('Database error: no access URL found for server')
-    } else if (accessUrlRow.length > 1) {
-      log('Multiple access URLs found in database for server:', server)
-      return res.status(500).send('Database error: multiple access URLs found for server')
+    if (accessUrlRow.length === 0 || accessUrlRow.length > 1) {
+      logError('Server settings error for access URL')
+      return res.status(500).send('Server error')
     }
     if (!accessUrlRow[0].setting_value) {
-      log('Access URL is empty in database for server:', server)
-      return res.status(500).send('Database error: access URL is empty for server')
-    }
-    if (accessUrlRow[0].setting_value === undefined) {
-      log('Access URL is undefined in database for server:', server)
-      return res.status(500).send('Database error: access URL is undefined for server')
+      logError('Access URL setting is empty')
+      return res.status(500).send('Server error')
     }
     const accessUrl = accessUrlRow[0].setting_value
-    log('Access URL retrieved from database:', accessUrl)
+    log('Configuration retrieved')
 
     // --------------------------------------------------------
     // Get the consumer key and secret from the bot settings
     // --------------------------------------------------------
-    const consumerKeyRow = await conn.query("SELECT setting_value FROM serversettings WHERE setting_name = 'consumer_key'")
-    const consumerSecretRow = await conn.query("SELECT setting_value FROM serversettings WHERE setting_name = 'consumer_secret'")
+    const consumerKeyRow = await conn.query("SELECT setting_value FROM serversettings WHERE server = ? AND setting_name = 'consumer_key'", [server])
+    const consumerSecretRow = await conn.query("SELECT setting_value FROM serversettings WHERE server = ? AND setting_name = 'consumer_secret'", [server])
     if (consumerKeyRow.length === 0 || consumerSecretRow.length === 0) {
-      log('Consumer key or secret not found in database')
-      return res.status(500).send('Database error: consumer key or secret not found')
+      logError('Missing OAuth credentials')
+      return res.status(500).send('Server error')
     }
     const consumerKey = consumerKeyRow[0].setting_value
     const consumerSecret = consumerSecretRow[0].setting_value
-    log('Consumer key and secret retrieved from database')
+    log('OAuth credentials loaded')
 
     // --------------------------------------------------------
     // GET THE REAL ACCESS TOKEN AND SECRET USING THE OAUTH VERIFIER
     // --------------------------------------------------------
     // exchange the request token for an access token using the oauth_verifier
-    oauth_nonce = require('uuid').v4(); // generate a unique nonce using uuid
-    oauth_timestamp = Math.floor(Date.now() / 1000); // current timestamp in seconds
+    oauth_nonce = require('uuid').v4()
+    oauth_timestamp = Math.floor(Date.now() / 1000)
 
     var httpMethod = 'POST',
     url = accessUrl,
@@ -158,7 +220,7 @@ helper.get('/auth-callback/', async (req, res) => {
     signature = oauthSignature.generate(httpMethod, url, parameters, consumerSecret, tokenSecret,
         { encodeSignature: false});
 
-    log('OAuth signature generated for access token request')
+    log('OAuth signature generated')
     // make the request to exchange the request token for an access token
     const wpapiParams = new URLSearchParams();
     wpapiParams.append('oauth_consumer_key', consumerKey);
@@ -170,16 +232,28 @@ helper.get('/auth-callback/', async (req, res) => {
     wpapiParams.append('oauth_verifier', oauth_verifier);
     wpapiParams.append('oauth_signature', encodedSignature);
 
-    const response = await fetch(accessUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: wpapiParams
-    });
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT)
+    let response
+    try {
+      response = await fetch(accessUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: wpapiParams,
+        signal: controller.signal
+      })
+    } catch (err) {
+      logError('Access token request failed: ' + (err.name === 'AbortError' ? 'timeout' : err.message))
+      return res.status(500).send('Server error')
+    } finally {
+      clearTimeout(timeout)
+    }
 
-    const responseText = await response.text();
-    log('Response from access token request:', responseText)
+    const responseText = await response.text()
+    log('Token exchange completed')
+    console.log(responseText)
 
     // parse the response to get the new access token and secret
     const responseParams = new URLSearchParams(responseText);
@@ -187,46 +261,34 @@ helper.get('/auth-callback/', async (req, res) => {
     const accessTokenSecret = responseParams.get('oauth_token_secret');
 
     if (!accessToken || !accessTokenSecret) {
-      log('Access token or secret not found in response')
-      return res.status(500).send('Authentication error: access token or secret not found in response')
+      logError('Access token exchange failed')
+      return res.status(500).send('Server error')
     }
 
-    log('Access token and secret obtained from access token request')
+    log('Access token obtained')
 
     // --------------------------------------------------------
     // SAVE THE NEW TOKENS
     // --------------------------------------------------------
     // update the record with the new access token and secret, and set auth_status to "linked"
     const result = await conn.query("UPDATE wp_link SET token = ?, secret = ?, auth_status = ? WHERE id = ?", [accessToken, accessTokenSecret, "linked", userId])
-    log('Database update result:', result)
 
-    if (result.affectedRows === 0) {
-      log('No records updated in database')
-      return res.status(500).send('Database error: failed to update authentication status')
+    if (result.affectedRows !== 1) {
+      logError('Token update failed or affected wrong number of rows')
+      return res.status(500).send('Server error')
     }
-    if (result.affectedRows > 1) {
-      log('Multiple records updated in database')
-      return res.status(500).send('Database error: multiple records updated')
-    }
+    log('Tokens saved')
 
     // --------------------------------------------------------
     // GET THE URL FOR THE WORDPRESS USERS API FROM THE DATABASE
     // --------------------------------------------------------    
     wordpress_users_api_route_result = await conn.query("SELECT setting_value FROM serversettings WHERE server = ? AND setting_name = 'wordpress_users_api_route'", [server])
-    if (wordpress_users_api_route_result.length === 0) {
-      log('No Wordpress users API route found in database for server:', server)
-      return res.status(500).send('Database error: no Wordpress users API route found for server')
+    if (wordpress_users_api_route_result.length !== 1 || !wordpress_users_api_route_result[0].setting_value) {
+      logError('WordPress API route configuration error')
+      return res.status(500).send('Server error')
     }
-    wordpress_users_api_route = wordpress_users_api_route_result[0].setting_value
-    if (!wordpress_users_api_route) {
-      log('Wordpress users API route is empty in database for server:', server)
-      return res.status(500).send('Database error: Wordpress users API route is empty for server')
-    }
-    if (wordpress_users_api_route === undefined) {
-      log('Wordpress users API route is undefined in database for server:', server)
-      return res.status(500).send('Database error: Wordpress users API route is undefined for server')
-    }
-    log('Wordpress users API route retrieved from database:', wordpress_users_api_route)
+    const wordpress_users_api_route = wordpress_users_api_route_result[0].setting_value
+    log('API configuration loaded')
 
     // --------------------------------------------------------
     // GET THE WORDPRESS USERNAME USING THE ACCESS TOKEN
@@ -251,9 +313,8 @@ helper.get('/auth-callback/', async (req, res) => {
     signature = oauthSignature.generate(httpMethod, url, parameters, consumerSecret, tokenSecret,
         { encodeSignature: false});
     
-    log('OAuth signature generated for worpress API request to get user info')
+    log('Fetching user info')
     
-   // make the request to get the user info from the Wordpress API using the access token
     const apiParams = new URLSearchParams();
     apiParams.append('oauth_consumer_key', consumerKey);
     apiParams.append('oauth_token', accessToken);
@@ -264,56 +325,59 @@ helper.get('/auth-callback/', async (req, res) => {
     apiParams.append('oauth_signature', encodedSignature);
 
     urlwithParams = `${url}?${apiParams.toString()}&context=edit`
-    log('Making API request to get user info with URL:', urlwithParams)
-    const apiResponse = await fetch(urlwithParams, {
-      method: 'GET'
-    });
+    
+    const controller2 = new AbortController()
+    const timeout2 = setTimeout(() => controller2.abort(), FETCH_TIMEOUT)
+    let apiResponse
+    try {
+      apiResponse = await fetch(urlwithParams, {
+        method: 'GET',
+        signal: controller2.signal
+      })
+    } catch (err) {
+      logError('User info request failed: ' + (err.name === 'AbortError' ? 'timeout' : err.message))
+      return res.status(500).send('Server error')
+    } finally {
+      clearTimeout(timeout2)
+    }
 
-    const apiResponseJson = await apiResponse.json();
-    log('Response from API request to get user info:', apiResponseJson)
+    let apiResponseJson
+    try {
+      apiResponseJson = await apiResponse.json()
+    } catch (err) {
+      logError('Failed to parse user info response')
+      return res.status(500).send('Server error')
+    }
     
     if (apiResponseJson.code) {
-      log('Error from Wordpress API:', apiResponseJson.message)
-      return res.status(500).send('Error from Wordpress API: ' + apiResponseJson.message)
+      logError('WordPress API returned an error')
+      return res.status(500).send('Server error')
     }
 
-    wordpressUsername = apiResponseJson.username;
+    wordpressUsername = apiResponseJson.username
 
-
-    if (!wordpressUsername) {
-      log('Wordpress username not found in response')
-      return res.status(500).send('Error from Wordpress API: username not found in response')
+    if (!wordpressUsername || typeof wordpressUsername !== 'string') {
+      logError('Invalid username in response')
+      return res.status(500).send('Server error')
     }
-    log('Wordpress username obtained from API response:', wordpressUsername)
+    log('User info retrieved')
 
     const updateUsernameResult = await conn.query("UPDATE wp_link SET wordpress_id = ? WHERE id = ?", [wordpressUsername, userId])
-    log('Database update result for Wordpress username:', updateUsernameResult)
 
-    if (updateUsernameResult.affectedRows === 0) {
-      log('No records updated in database for Wordpress username')
-      return res.status(500).send('Database error: failed to update Wordpress username')
+    if (updateUsernameResult.affectedRows !== 1) {
+      logError('Username update failed')
+      return res.status(500).send('Server error')
     }
-    if (updateUsernameResult.affectedRows > 1) {
-      log('Multiple records updated in database for Wordpress username')
-      return res.status(500).send('Database error: multiple records updated for Wordpress username')
-    }
+    log('User information saved')
 
     // Get the webhook URL for the server
     const webhookUrlResult = await conn.query("SELECT setting_value FROM serversettings WHERE server = ? AND setting_name = 'harker-webhook'", [server])
-    if (webhookUrlResult.length === 0) {
-      log('No webhook URL found in database for server:', server)
-      return res.status(500).send('Database error: no webhook URL found for server')
+    if (webhookUrlResult.length !== 1 || !webhookUrlResult[0].setting_value) {
+      logError('Webhook configuration error')
+      return res.status(500).send('Server error')
     }
     const webhookUrl = webhookUrlResult[0].setting_value
-    if (!webhookUrl) {
-      log('Webhook URL is empty in database for server:', server)
-      return res.status(500).send('Database error: webhook URL is empty for server')
-    }
-    if (webhookUrl === undefined) {
-      log('Webhook URL is undefined in database for server:', server)
-      return res.status(500).send('Database error: webhook URL is undefined for server')
-    }
-    log('Webhook URL retrieved from database:', webhookUrl)
+    log('Webhook configured')
 
     // Send a message to the webhook URL to notify that the authentication was successful
     // Authentication successful
@@ -326,25 +390,33 @@ helper.get('/auth-callback/', async (req, res) => {
       Database ID: ${userId}`
     };
 
-    const webhookResponse = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(webhookPayload)
-    });
+    const controller3 = new AbortController()
+    const timeout3 = setTimeout(() => controller3.abort(), FETCH_TIMEOUT)
+    try {
+      const webhookResponse = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(webhookPayload),
+        signal: controller3.signal
+      })
+      if (webhookResponse.ok) {
+        log('Notification sent')
+      } else {
+        logError('Webhook response: ' + webhookResponse.status)
+      }
+    } catch (err) {
+      logError('Webhook failed: ' + (err.name === 'AbortError' ? 'timeout' : err.message))
+    } finally {
+      clearTimeout(timeout3)
+    }
 
-    if (!webhookResponse.ok) {
-      log('Failed to send webhook notification:', webhookResponse.statusText)
-    } else {
-      log('Webhook notification sent successfully')
-   }
-
-    log('Authentication successful for user ID:', userId)
+    log('Authentication completed')
 
   } catch (err) {
-    logError('Database error: ' + err);
-    return res.status(500).send('Database error occurred');
+    logError('Request error: ' + err.message);
+    return res.status(500).send('Server error');
   } finally {
     if (conn) conn.release();
   }
