@@ -16,6 +16,7 @@ import pycurl
 import certifi
 from io import BytesIO
 import json
+import asyncio
 import requests
 import base64
 import urllib.parse
@@ -134,7 +135,7 @@ class WordPressAPI(commands.Cog):
 					return
 				user = message.guild.get_member(user_global.id)
 
-				wpinfo = curl_get_me(nameid, server)
+				wpinfo = await curl_get_me(nameid, server)
 				if "code" in wpinfo:
 					code = wpinfo["code"]
 					# error - post a message to the channel depending on the error code
@@ -207,7 +208,7 @@ class WordPressAPI(commands.Cog):
 						await logchannel.send(msg)
 
 					# Get the info on the character
-					charinfo = get_my_character(nameid, server)
+					charinfo = await get_my_character(nameid, server)
 					if "code" in charinfo:
 						await logchannel.send('I\'m sorry Master, I failed to read your character {}'.format(charinfo["message"]))
 					else:
@@ -530,8 +531,13 @@ def curl_checkAPI(server):
 
 # Function to run curl GET
 def curl_get(endpoint, server, nameid: str=""):
+	"""
+	Synchronous compatibility wrapper for existing callers.
+	Keeps the original blocking behaviour using `requests`.
+	New async codepath is provided by `curl_get_async`.
+	"""
 	wordpress_api_endpoint = get_bot_setting("wordpress_api_endpoint", server)
-	
+
 	auth = None
 	if nameid != "":
 		info = get_link(nameid, server)
@@ -555,16 +561,13 @@ def curl_get(endpoint, server, nameid: str=""):
 		result = {}
 		result["code"] = "no_consumer_keys"
 		return result
-	
+    
 	auth = OAuth1(client_key=consumer_key, client_secret=consumer_secret, resource_owner_key=token, resource_owner_secret=secret)
-	
+    
 	apiurl = "{}{}".format(wordpress_api_endpoint, endpoint)
 
 	logging.info(f"Making authenticated request to Wordpress API at {apiurl} with OAuth1 authentication for user {wordpress_id}")
-	#print("consumers: {} {}".format(consumer_key, consumer_secret))
-	#print("token and secret: {} {}".format(token, secret))
-	#print("API URL: {}".format(apiurl))
-	
+
 	try:
 		response = requests.get(apiurl, auth=auth)
 		if response.status_code == 200:
@@ -588,31 +591,80 @@ def curl_get(endpoint, server, nameid: str=""):
 		result = {}
 		result["code"] = "request_failed"
 		result["error"] = str(e)
-	
+
 	if "code" in result:
 		logging.error(f"Error response from Wordpress API: {result['code']} - {result.get('error', 'No error message provided')}")
-	else:	
+	else:    
+		logging.debug(f"Success response from Wordpress API: {result}")
+	return result
+
+
+async def curl_get_async(endpoint, server, nameid: str=""):
+	"""Async version of curl_get that offloads blocking `requests` calls to a thread."""
+	wordpress_api_endpoint = get_bot_setting("wordpress_api_endpoint", server)
+
+	auth = None
+	if nameid != "":
+		info = get_link(nameid, server)
+		if info["status"] != "linked":
+			result = {"code": "account_not_linked"}
+			return result
+		else:
+			wordpress_id = urllib.parse.quote(info["wordpress_id"])
+			secret = info["secret"]
+			token = info["token"]
+	else:
+		return {"code": "no_wordpress_id"}
+
+	consumer_key = get_bot_setting("consumer_key", server)
+	consumer_secret = get_bot_setting("consumer_secret", server)
+
+	if not consumer_key or not consumer_secret:
+		return {"code": "no_consumer_keys"}
+
+	auth = OAuth1(client_key=consumer_key, client_secret=consumer_secret, resource_owner_key=token, resource_owner_secret=secret)
+	apiurl = "{}{}".format(wordpress_api_endpoint, endpoint)
+
+	logging.info(f"Making authenticated async request to Wordpress API at {apiurl} for user {wordpress_id}")
+
+	try:
+		response = await asyncio.to_thread(requests.get, apiurl, auth=auth)
+		if response.status_code == 200:
+			try:
+				result = await asyncio.to_thread(response.json)
+			except Exception:
+				result = {"code": "json_parse_error", "error": f"Failed to parse JSON response. Response content: {response.text}"}
+		else:
+			try:
+				error_info = await asyncio.to_thread(response.json)
+				result = {"code": error_info.get('code', f'http_{response.status_code}_error'), "error": f"HTTP {response.status_code} error: {error_info.get('message', 'No error message provided') }"}
+			except Exception:
+				result = {"code": f"http_{response.status_code}_error", "error": f"HTTP {response.status_code} error: No error message provided"}
+	except Exception as e:
+		result = {"code": "request_failed", "error": str(e)}
+
+	if "code" in result:
+		logging.error(f"Error response from Wordpress API: {result['code']} - {result.get('error', 'No error message provided')}")
+	else:
 		logging.debug(f"Success response from Wordpress API: {result}")
 	return result
 
 # Get info on wordpress user
-def curl_get_me(nameid, server):
-	#curl https://gvlarp.com/wp-json/wp/v2/users/me
-	
-	result = curl_get("wp/v2/users/me?context=edit", server, nameid)
-		
+async def curl_get_me(nameid, server):
+	# curl https://gvlarp.com/wp-json/wp/v2/users/me
+	result = await curl_get_async("wp/v2/users/me?context=edit", server, nameid)
 	return result
 
-def get_my_character(nameid: str, server: str):
+async def get_my_character(nameid: str, server: str):
 		wordpress_site = get_bot_setting("wordpress_site", server)
-		
+
 		characterinfo = {}
 		if wordpress_site == "none":
 			characterinfo["code"] = "not_enabled"
 			characterinfo["message"] = "This server is not linked to a Wordpress site"
 			return characterinfo
 
-		wpresult = curl_get_me(nameid, server)
+		wpresult = await curl_get_me(nameid, server)
 		meok = 0
 		if "code" in wpresult:
 			characterinfo["code"] = wpresult["code"]
@@ -627,13 +679,13 @@ def get_my_character(nameid: str, server: str):
 				characterinfo["message"] = 'I\'m sorry Master, you first need to use the /link command to link your account. Use this to get the application password: {}/wp-admin/authorize-application.php?app_name=Renfield'.format(wordpress_site)
 			else:
 				characterinfo["message"] = 'I\'m sorry Master, I recieved this error message when I tried to connect: {}'.format(wpresult)
-			
+            
 		else:
 			meok = 1
-		
+        
 		if meok:
 			uri = "vampire-character/v1/character/me"
-			result = curl_get(uri, server, nameid)
+			result = await curl_get_async(uri, server, nameid)
 
 			# # character isn't linked?
 			# # password is wrong
@@ -653,7 +705,7 @@ def get_my_character(nameid: str, server: str):
 		return characterinfo
 
 
-def get_active_characters(server: str, nameid: str):
+async def get_active_characters(server: str, nameid: str):
 	characterlist = {}
 
 	if server is None:
@@ -664,16 +716,16 @@ def get_active_characters(server: str, nameid: str):
 		characterlist["code"] = "no_name"
 		characterlist["message"] = "Need ID of discord user to run query"
 		return characterlist
-	
+    
 	wordpress_site = get_bot_setting("wordpress_site", server)
 	if wordpress_site == "none":
 		characterlist["code"] = "not_enabled"
 		characterlist["message"] = "This server is not linked to a Wordpress site"
 		return characterlist
-	
+    
 	logging.info("Getting list of active characters.")
 	uri = "vampire-character/v1/character/"
-	result = curl_get(uri, server, nameid)
+	result = await curl_get_async(uri, server, nameid)
 	if "code" in result:
 		characterlist["code"] = result["code"]
 		if result["code"] == 'rest_forbidden':
@@ -687,29 +739,29 @@ def get_active_characters(server: str, nameid: str):
 
 	return characterlist
 
-def get_character(server: str, nameid: str, character: str):
+async def get_character(server: str, nameid: str, character: str):
 		wordpress_site = get_bot_setting("wordpress_site", server)
-		
+        
 		characterinfo = {}
 		if wordpress_site == "none":
 			characterinfo["code"] = "not_enabled"
 			characterinfo["message"] = "This server is not linked to a Wordpress site"
 			return characterinfo
-		
-		isST = is_storyteller(nameid, server);
-		
+        
+		isST = await is_storyteller(nameid, server)
+        
 		# validate character input
 		# Can be:
 		#		actual database character ID 	- integer
-		#		Discord @ mention 				- check mentions and if they are linked
-		#		wordpress ID	 				- check against WP users
+		#		Discord @ mention 			- check mentions and if they are linked
+		#		wordpress ID 			- check against WP users
 		#		SQL LIKE / Guess on name of active characters
 		gotchar = 0
 		if isST and character.isnumeric():
 			id = character
-			
+            
 			uri = "vampire-character/v1/character/{}".format(id)
-			result = curl_get(uri, server, nameid)
+			result = await curl_get_async(uri, server, nameid)
 
 			if "code" in result:
 				characterinfo["code"] = result["code"]
@@ -722,19 +774,19 @@ def get_character(server: str, nameid: str, character: str):
 			else:
 				gotchar = 1
 				characterinfo["result"] = result["result"]
-				
+                
 
 		elif "@" in character:
 			character = character.replace("@","")
 			character = character.replace("<","")
 			character = character.replace(">","")
-			
+            
 			if character.isnumeric():
 				wordpress_id = get_wordpress_id(character, server)
 				if wordpress_id:
 					# now we have the wp ID, we can query for the character
 					uri = "/vampire-character/v1/character/wpid?wordpress_id={}".format(urllib.parse.quote(wordpress_id))
-					result = curl_get(uri, server, nameid)
+					result = await curl_get_async(uri, server, nameid)
 					if "code" in result:
 						characterinfo["code"] = result["code"]
 						if result["code"] == 'no_character':
@@ -748,30 +800,30 @@ def get_character(server: str, nameid: str, character: str):
 					else:
 						gotchar = 1
 						characterinfo["result"] = result["result"]
-						
+                        
 				else:
 					characterinfo["code"] = "no_wpid_from_at"
 					characterinfo["message"] = "I could not get WP ID from @{} mention. This user needs to link their Discord account to the Wordpress site.".format(character)
 			else:
 				characterinfo["code"] = "no_discordod_from_at"
 				characterinfo["message"] = "I could not get discord ID from @{} mention. Are you sure you specified a user?".format(character)
-			
+            
 		elif isST:
 			# try getting the character info by running a query as if 'character' is a WP ID
 			wordpress_id = character
 			uri = "vampire-character/v1/character/wpid?wordpress_id={}".format(urllib.parse.quote(wordpress_id))
-			result = curl_get(uri, server, nameid)
+			result = await curl_get_async(uri, server, nameid)
 
 			if "code" in result:
 				if result["code"] == 'rest_forbidden':
 					characterinfo["code"] = result["code"]
 					characterinfo["message"] = "Your Wordpress account does not have permission to access this information."
 				elif result["code"] == 'no_character':
-				
+                
 					# for everything else, we'll need a list of the active characters
 					uri = "vampire-character/v1/character/"
-					list = curl_get(uri, server, nameid)
-										
+					list = await curl_get_async(uri, server, nameid)
+                                        
 					# does the character directly match an existing character?
 					match = 0
 					charinfo = []
@@ -779,12 +831,12 @@ def get_character(server: str, nameid: str, character: str):
 						if chars["characterName"].upper() == character.upper():
 							match += 1
 							charinfo = chars
-					
+                    
 					if match == 1:
 						# retrieve full character info
 						id = charinfo["characterID"]
 						uri = "vampire-character/v1/character/{}".format(id)
-						result = curl_get(uri, server, nameid)
+						result = await curl_get_async(uri, server, nameid)
 
 						if "code" in result:
 							characterinfo["code"] = result["code"]
@@ -799,24 +851,24 @@ def get_character(server: str, nameid: str, character: str):
 						characterinfo["code"] = "multiple_match"
 						characterinfo["message"] = "More than one active character is named {}".format(character)
 					else:
-					
+                    
 						# query wordpress to get the list of display names
 						# and try to match on that
 						uri = "wp/v2/users?context=edit"
-						users = curl_get(uri, server, nameid)
+						users = await curl_get_async(uri, server, nameid)
 
 						matchexact = 0
 						matchclose = 0
 						userinfo = []
 						listofcloseusers = []
 						for user in users:
-						
+                        
 							# does this user have a character?
 							tmphaschar = 0
 							for chars in list["result"]:
 								if user["username"] == chars["wordpress_id"]:
 									tmphaschar = 1
-						
+                        
 							if tmphaschar:
 								#print("compare {} to {}".format(character.upper(), user["name"].upper()))
 								if user["name"].upper() == character.upper():
@@ -826,33 +878,33 @@ def get_character(server: str, nameid: str, character: str):
 									matchclose += 1
 									userinfo = user
 									listofcloseusers.append(user["username"])
-												
+                                                
 						# get full user info
 						if (matchexact + matchclose) > 0:
 							uri = "wp/v2/users/{}?context=edit".format(userinfo["id"])
-							fulluser = curl_get(uri, server, nameid)
-								
+							fulluser = await curl_get_async(uri, server, nameid)
+                                
 						if matchexact == 1:
-							
+                            
 							uri = "/vampire-character/v1/character/wpid?wordpress_id={}".format(urllib.parse.quote(fulluser["username"]))
-							result = curl_get(uri, server, nameid)
-						
+							result = await curl_get_async(uri, server, nameid)
+                        
 							gotchar = 1
 							characterinfo["result"] = result["result"]
 						elif matchclose == 1:
 							uri = "/vampire-character/v1/character/wpid?wordpress_id={}".format(urllib.parse.quote(fulluser["username"]))
-							result = curl_get(uri, server, nameid)
-						
+							result = await curl_get_async(uri, server, nameid)
+                        
 							gotchar = 1
 							characterinfo["result"] = result["result"]
 						elif (matchexact + matchclose) > 1:
-						
+                        
 							listofclose = []
 							for chars in list["result"]:
 								for username in listofcloseusers:
 									if username == chars["wordpress_id"]:
 										listofclose.append("{} ({})".format(username, chars["characterName"]))
-						
+                        
 							characterinfo["code"] = "multiple_close"
 							characterinfo["message"] = "I found {} close matches for {}. Please try again with an exact name. Close matches are: {}".format(matchclose, character, ", ".join(listofclose))
 
@@ -872,8 +924,8 @@ def get_character(server: str, nameid: str, character: str):
 			characterinfo["message"] = "Use the @ mention to get character information on a user"
 		return characterinfo
 		
-def is_storyteller(nameid, server):
-	wpinfo = curl_get_me(nameid, server)
+async def is_storyteller(nameid, server):
+	wpinfo = await curl_get_me(nameid, server)
 	if "code" in wpinfo:
 		return 0
 	else:

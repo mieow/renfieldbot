@@ -28,7 +28,13 @@ forminputIDs = {
 	"TimescalePulldownActionRow": 16,
 	"IntensityPulldownActionRow": 17,
 	"BackgroundPulldownActionRow": 18,
-	"SinsPulldownActionRow": 19
+	"SinsPulldownActionRow": 19,
+	"MagicPathDiffPulldownActionRow": 20,
+	"MagicPathPulldownActionRow": 21,
+	# "AttributeTypePulldownActionRow": 22,
+	"AttributePulldownActionRow": 23,
+	"AbilityTypePulldownActionRow": 24,
+	"AbilityPulldownActionRow": 25
 }
 
 canlift = [
@@ -381,6 +387,132 @@ def sort_character_backgrounds(backgroundlist):
 	"""
 	return sorted(backgroundlist, key=lambda bg: (bg.get('background', ''), bg.get('level', ''), bg.get('sector', ''), bg.get('comment', '')))
 
+class RollAbilityTypeDropdown(discord.ui.Select):
+	def __init__(self, view: 'RollPage1LayoutView', characterdata):	
+		self.characterdata = characterdata
+
+		options = []
+		for grp in characterdata["abilitygroups"]:
+			options.append(discord.SelectOption(label=grp, value=grp))
+
+		# The placeholder is what will be shown when no option is chosen
+		# The min and max values indicate we can only pick one of the three options
+		# The options parameter defines the dropdown options. We defined this above
+		super().__init__(options=options, placeholder="(Optional) Choose an ability group")
+
+	async def callback(self, interaction: discord.Interaction):
+		assert self.view is not None
+		view: RollPage1LayoutView = self.view
+		selectedvalue = self.values[0]
+
+		attroptions = []
+		for attr in self.characterdata["abilitygroups"][selectedvalue]:
+			if attr["specialty"] == "":
+				label = "{} {}".format(attr["skillname"], attr["level"])
+			else:
+				label = "{} ({}) {}".format(attr["skillname"], attr["specialty"], attr["level"])
+			value = "{}:{}:{}:{}".format(selectedvalue,attr["skillname"], attr["specialty"], attr["level"])
+			attroptions.append(discord.SelectOption(label=label, value=value))
+
+		self.view.abilar.children[0].options = attroptions
+
+		for opt in self.options:
+			opt.default = False
+			
+		discord.utils.get(self.options, value=selectedvalue).default = True
+
+		await interaction.response.edit_message(view=self.view)
+
+
+# class RollAttributeTypeDropdown(discord.ui.Select):
+# 	def __init__(self, view: 'RollPage1LayoutView', characterdata):	
+# 		self.characterdata = characterdata
+
+# 		options = []
+# 		for grp in characterdata["attributegroups"]:
+# 			options.append(discord.SelectOption(label=grp, value=grp))
+
+# 		# The placeholder is what will be shown when no option is chosen
+# 		# The min and max values indicate we can only pick one of the three options
+# 		# The options parameter defines the dropdown options. We defined this above
+# 		super().__init__(options=options, placeholder="Choose an attribute group")
+
+# 	async def callback(self, interaction: discord.Interaction):
+# 		assert self.view is not None
+# 		view: RollPage1LayoutView = self.view
+# 		selectedvalue = self.values[0]
+
+# 		attroptions = []
+# 		for attr in self.characterdata["attributegroups"][selectedvalue]:
+# 			if attr["specialty"] == "":
+# 				label = "{} {}".format(attr["name"], attr["level"])
+# 			else:
+# 				label = "{} ({}) {}".format(attr["name"], attr["specialty"], attr["level"])
+# 			value = "{}:{}:{}:{}".format(selectedvalue,attr["name"], attr["specialty"], attr["level"])
+# 			attroptions.append(discord.SelectOption(label=label, value=value))
+
+# 		self.view.attrar.children[0].options = attroptions
+
+# 		for opt in self.options:
+# 			opt.default = False
+			
+# 		discord.utils.get(self.options, value=selectedvalue).default = True
+
+# 		await interaction.response.edit_message(view=self.view)
+
+class RollAttributeDropdown(discord.ui.Select):
+	def __init__(self, view: 'RollPage1LayoutView', characterdata):	
+
+		options = []
+		for grp in characterdata["attributegroups"]:
+			for attr in characterdata["attributegroups"][grp]:
+				if attr["specialty"] == "":
+					label = "{}: {} {}".format(grp, attr["name"], attr["level"])
+				else:
+					label = "{}: {} ({}) {}".format(grp, attr["name"], attr["specialty"], attr["level"])
+				value = "{}:{}:{}:{}".format(grp,attr["name"], attr["specialty"], attr["level"])
+				options.append(discord.SelectOption(label=label, value=value))
+
+		# The placeholder is what will be shown when no option is chosen
+		# The min and max values indicate we can only pick one of the three options
+		# The options parameter defines the dropdown options. We defined this above
+		super().__init__(options=options, placeholder="Choose an attribute")
+
+	async def callback(self, interaction: discord.Interaction):
+		assert self.view is not None
+		view: RollPage1LayoutView = self.view
+		selectedvalue = self.values[0]
+
+		for opt in self.options:
+			opt.default = False
+			
+		discord.utils.get(self.options, value=selectedvalue).default = True
+
+		await interaction.response.edit_message(view=self.view)
+
+class RollAbilityDropdown(discord.ui.Select):
+	def __init__(self, view: 'RollPage1LayoutView'):	
+
+		options = []
+		options.append(discord.SelectOption(label="Choose an ability type", value="-"))
+
+		# The placeholder is what will be shown when no option is chosen
+		# The min and max values indicate we can only pick one of the three options
+		# The options parameter defines the dropdown options. We defined this above
+		super().__init__(options=options, placeholder="(Optional) Choose an ability type")
+
+	async def callback(self, interaction: discord.Interaction):
+		assert self.view is not None
+		view: RollPage1LayoutView = self.view
+		selectedvalue = self.values[0]
+
+		for opt in self.options:
+			opt.default = False
+			
+		discord.utils.get(self.options, value=selectedvalue).default = True
+
+		await interaction.response.edit_message(view=self.view)
+
 
 class RollSinsDropdown(discord.ui.Select):
 	def __init__(self, view: 'RollPage1LayoutView', path: str):	
@@ -652,6 +784,72 @@ class RollBackgroundDropdown(discord.ui.Select):
 			# selected options. We only want the first one.
 			await interaction.response.edit_message(view=self.view)
 
+class RollMagicPathDropdown(discord.ui.Select):
+	def __init__(self, view: 'RollPage1LayoutView', characterdata):
+
+		primarypaths = characterdata["primary_paths"]
+		secondarypaths = characterdata["secondary_paths"]
+
+		options = []
+		for disc in primarypaths:
+			for path in primarypaths[disc]:
+				pathinfo = primarypaths[disc][path]
+				pathnoslashes = path.replace("\\","")
+				options.append(discord.SelectOption(label="{}: {}".format(disc, pathnoslashes), value="P:{}:{}:{}".format(disc,pathnoslashes,pathinfo[0])))
+		for disc in secondarypaths:
+			for path in secondarypaths[disc]:
+				pathinfo = secondarypaths[disc][path]
+				pathnoslashes = path.replace("\\","")
+				options.append(discord.SelectOption(label="{}: {}".format(disc, pathnoslashes), value="S:{}:{}:{}".format(disc,pathnoslashes,pathinfo[0])))
+
+		# The placeholder is what will be shown when no option is chosen
+		# The min and max values indicate we can only pick one of the three options
+		# The options parameter defines the dropdown options. We defined this above
+		super().__init__(options=options, placeholder="Choose a path to roll...")
+
+	async def callback(self, interaction: discord.Interaction):
+		assert self.view is not None
+		view: RollPage1LayoutView = self.view
+		selectedvalue = self.values[0]
+		
+		for opt in self.options:
+			opt.default = False
+
+		path = selectedvalue.split(':')[2]
+		max = int(selectedvalue.split(':')[3])
+
+		options = []
+		for i in range(1, max+1):
+			options.append(discord.SelectOption(label="{}: {} (diff {})".format(path, i, int(i)+3), value=int(i)+3))
+			
+		self.view.magicdiffar.children[0].options = options
+
+		discord.utils.get(self.options, value=selectedvalue).default = True
+
+		await interaction.response.edit_message(view=self.view)
+		
+class RollMagicPathDiffDropdown(discord.ui.Select):
+	def __init__(self, view: 'RollPage1LayoutView'):
+
+		options = []
+		options.append(discord.SelectOption(label="Choose a path...", value=0))
+
+		# The placeholder is what will be shown when no option is chosen
+		# The min and max values indicate we can only pick one of the three options
+		# The options parameter defines the dropdown options. We defined this above
+		super().__init__(options=options, placeholder="Choose the path level...")
+
+	async def callback(self, interaction: discord.Interaction):
+		assert self.view is not None
+		view: RollPage1LayoutView = self.view
+		selectedvalue = int(self.values[0])
+
+		for opt in self.options:
+			opt.default = False
+			
+		discord.utils.get(self.options, value=selectedvalue).default = True
+		await interaction.response.edit_message(view=self.view)
+
 
 class RollCharsDropdown(discord.ui.Select):
 	def __init__(self, view: 'RollPage1LayoutView', characterlist):
@@ -750,6 +948,9 @@ class RollCharsDropdown(discord.ui.Select):
 					topofpage = opt.value
 
 			discord.utils.get(self.options, value=int(selectedvalue)).default = True
+
+			# Update character info for selectetd character
+			self.view.characterdata = await get_char_from_pulldown(self.view)
 
 			# Use the interaction object to send a response message containing
 			# the user's favourite colour or choice. The self object refers to the
@@ -1121,7 +1322,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 					break
 		
 		if self.characterdata is None:
-			self.characterdata = get_char_from_pulldown(self.__view)
+			self.characterdata = await get_char_from_pulldown(self.__view)
 		
 		if self.characterdata is None:
 			self.__view.info.content = "ERROR: Select a character to roll for!"
@@ -1132,7 +1333,18 @@ class RollSubmitButtons(discord.ui.ActionRow):
 		else:
 			info = load_info(self.__view, self.characterdata)
 			
-			if selection == "Initiative":
+			if selection == "Attribute + Ability":
+				result = roll_pool(info["Perception"] + info["Alertness"])
+				mystr = format_roll(info["character_name"],
+					"Attribute + Ability",
+					result["description"],
+					info["detail"],
+					"{} Perception + {} Alertness".format(info["Perception"], info["Alertness"]),
+					result["difficulty"],
+					result["rolls"],
+					""
+					)
+			elif selection == "Initiative":
 				result = roll_initiative(info=info)
 				info["Difficulty"] = 0
 				mystr = format_initiative(result, info)
@@ -1204,7 +1416,18 @@ class RollSubmitButtons(discord.ui.ActionRow):
 				statlevel = info[info["Path Attribute"]]
 				result = roll_pool(statlevel, 8)
 				mystr = format_degeneration(result, info)
-			
+
+			elif selection == "Magic Path":
+				# Check for thaum or some other magic path
+				# Can we work out if they have any magic paths? primary_paths -> guess in info
+
+				if info["Magic Path"] > 0:
+					result = roll_pool(info["Willpower"], info["Magic Path Diffiulty"])
+					mystr = format_magicpath(result, info)
+					rollok = 0
+				else:
+					mystr = "{} does not have any magical paths".format(self.characterdata["name"])
+
 			else:
 				mystr = "{} is not supported yet".format(selection)
 
@@ -1250,7 +1473,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 
 
 		if self.characterdata is None:
-			self.characterdata = get_char_from_pulldown(self.__view)
+			self.characterdata = await get_char_from_pulldown(self.__view)
 		
 		if self.characterdata is None:
 			self.__view.info.content = "ERROR: Select a character to roll for!"
@@ -1261,76 +1484,6 @@ class RollSubmitButtons(discord.ui.ActionRow):
 			info = load_info(self.__view, self.characterdata)
 
 			# -- Create all the inputs we might need --
-			# How much Celerity is added to Dex
-			self.__view.celerityar = discord.ui.ActionRow(id=forminputIDs["CelerityPulldownActionRow"])
-			self.__view.celerityar.add_item(RollAddCelerityDropdown(self.__view, celerity=info["Celerity"]))
-			self.__view.textcel = discord.ui.TextDisplay("Choose how much of your Celerity is being used for Initiative (Total - number of extra rounds)")
-			# Spending blood on Dexterity
-			self.__view.dexterityar = discord.ui.ActionRow(id=forminputIDs["DexterityPulldownActionRow"])
-			self.__view.dexterityar.add_item(RollAddStatBoostDropdown(self.__view, info["Dexterity"], "Dexterity", int(max_rating)))
-			self.__view.textdex = discord.ui.TextDisplay("Choose how much blood you have spent to boost Dexterity")
-			# Spend blood on Stamina
-			self.__view.staminaar = discord.ui.ActionRow(id=forminputIDs["StaminaPulldownActionRow"])
-			self.__view.staminaar.add_item(RollAddStatBoostDropdown(self.__view, info["Stamina"], "Stamina", int(max_rating)))
-			self.__view.textstam = discord.ui.TextDisplay("Choose how much blood you have spent to boost Stamina")
-			# Spend blood on Strength
-			self.__view.strengthar = discord.ui.ActionRow(id=forminputIDs["StrengthPulldownActionRow"])
-			self.__view.strengthar.add_item(RollAddStatBoostDropdown(self.__view, info["Strength"], "Strength", int(max_rating)))
-			self.__view.textstr = discord.ui.TextDisplay("Select any boosts to Strength")
-			# Select Damage type, e.g. Lethal
-			self.__view.damagear = discord.ui.ActionRow(id=forminputIDs["DamageTypePulldownActionRow"])
-			self.__view.damagear.add_item(RollDmgTypeDropdown(self.__view))
-			self.__view.textdmg = discord.ui.TextDisplay("Select the damage type")
-			# Spend willpower
-			self.__view.wpsection = discord.ui.Section("Spend Willpower", accessory=RollCheckButton("Off"), id=forminputIDs["WillpowerButton"])
-			# Frenzy Difficulty
-			self.__view.frenzyar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
-			self.__view.frenzyar.add_item(RollFrenzyDiffDropdown(self.__view, default="provocation:6", clan=info["Clan"]))
-			self.__view.textfrenzy = discord.ui.TextDisplay("Select the difficulty")
-			# Wound penalties
-			self.__view.woundsar = discord.ui.ActionRow(id=forminputIDs["WoundPulldownActionRow"])
-			self.__view.woundsar.add_item(RollWoundDropdown(self.__view))
-			self.__view.woundstr = discord.ui.TextDisplay("Select any wound penalties")
-			# Rotschreck difficulty
-			self.__view.rotsar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
-			self.__view.rotsar.add_item(RollRotschreckDiffDropdown(self.__view, default="bonfire:6"))
-			self.__view.textrots = discord.ui.TextDisplay("Select the difficulty")
-			# Has a speciality
-			self.__view.speciality = discord.ui.Section("Have a relevant speciality", accessory=RollCheckButton("Off"), id=forminputIDs["SpecialityButton"])
-			# Choose vehicle
-			self.__view.vehiclear = discord.ui.ActionRow(id=forminputIDs["VehiclePulldownActionRow"])
-			self.__view.vehiclear.add_item(RollVehicleDropdown(self.__view))
-			self.__view.vehicletext = discord.ui.TextDisplay("Select the vehicle to drive")
-			# Choose Dex or Wits
-			self.__view.drivestattext = discord.ui.TextDisplay("Select the attribute to use")
-			self.__view.drivestatar = discord.ui.ActionRow(id=forminputIDs["DriveStatPulldownActionRow"])
-			self.__view.drivestatar.add_item(RollDriveStatDropdown(self.__view))
-			# +1 diff rain
-			self.__view.weather = discord.ui.Section("+1 difficulty for bad weather", accessory=RollCheckButton("Off"), id=forminputIDs["WeatherButton"])
-			# +1 diff heavy traffic
-			self.__view.traffic = discord.ui.Section("+1 difficulty for heavy traffic", accessory=RollCheckButton("Off"), id=forminputIDs["TrafficButton"])
-			# +1 diff pursuit
-			self.__view.pursuit = discord.ui.Section("+1 difficulty for pursuit", accessory=RollCheckButton("Off"), id=forminputIDs["PursuitButton"])
-			# +1 diff for every 10 mph over safe speed
-			self.__view.speedtext = discord.ui.TextDisplay("Select the speed")
-			self.__view.speedar = discord.ui.ActionRow(id=forminputIDs["SpeedPulldownActionRow"])
-			self.__view.speedar.add_item(RollSpeedDropdown(self.__view))
-			# Duration
-			self.__view.difftimear = discord.ui.ActionRow(id=forminputIDs["TimescalePulldownActionRow"])
-			self.__view.difftimear.add_item(RollAuspexTimescaleDropdown(self.__view))
-			self.__view.difftimestr = discord.ui.TextDisplay("Select how long ago the impression was made")
-			# Intensity of Impression
-			self.__view.diffintenar = discord.ui.ActionRow(id=forminputIDs["IntensityPulldownActionRow"])
-			self.__view.diffintenar.add_item(RollAuspexIntensityDropdown(self.__view))
-			self.__view.diffintenstr = discord.ui.TextDisplay("Select the strength of impression")
-			# list of backgrounds - name, spec, sector, level
-			self.__view.bgar = discord.ui.ActionRow(id=forminputIDs["BackgroundPulldownActionRow"])
-			self.__view.bgar.add_item(RollBackgroundDropdown(self.__view, self.characterdata))
-			self.__view.bgtext = discord.ui.TextDisplay("Select the background")
-			# Hierarchy of Sins
-			self.__view.sinsar = discord.ui.ActionRow(id=forminputIDs["SinsPulldownActionRow"])
-			self.__view.sinsar.add_item(RollSinsDropdown(self.__view, info["Path of Enlightenment Info"]))
-			self.__view.textsins = discord.ui.TextDisplay("I have committed...")
 
 			inputs = {
 				"celerity": 0,
@@ -1352,10 +1505,38 @@ class RollSubmitButtons(discord.ui.ActionRow):
 				"speed": 0,
 				"duration": 0,
 				"intensity": 0,
-				"backgrounds": 0
+				"backgrounds": 0,
+				"sins": 0,
+				"magicpath": 0,
+				"magicdiff": 0,
+				#"attribute_type": 0,
+				"attribute": 0,
+				"ability_type": 0,
+				"ability": 0
 			}
 
-			if selection == "Initiative":
+			if selection == "Attribute + Ability":
+				self.__view.clear_items()
+				self.__view.texthelp = discord.ui.TextDisplay("Attribute [+ Ability] and select difficulty")
+				inputs["wounds"] = 1
+				inputs["speciality"] = 1
+				inputs["willpower"] = 1
+
+				inputs["difficulty"] = 6
+
+				# Add blood spends to stats if physical
+				# Add celerity if dexterity
+
+				# Choose physical, mental, social or other
+				#inputs["attribute_type"] = 1
+				# Then choose ability
+				inputs["attribute"] = 1
+				# Choose ability group
+				inputs["ability_type"] = 1
+				# then choose ability
+				inputs["ability"] = 1
+
+			elif selection == "Initiative":
 				self.__view.clear_items()
 				self.__view.texthelp = discord.ui.TextDisplay("Dexterity + Wits + [Celerity] + 1D10")
 
@@ -1406,7 +1587,6 @@ class RollSubmitButtons(discord.ui.ActionRow):
 				self.__view.clear_items()
 				self.__view.texthelp = discord.ui.TextDisplay("Select your options to customise your driving roll.")
 
-				inputs["willpower"] = 1
 				inputs["vehicle"] = 1
 				inputs["drivestat"] = 1
 
@@ -1415,6 +1595,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 					inputs["celerity"] = 1
 				inputs["wounds"] = 1
 				inputs["speciality"] = 1
+				inputs["willpower"] = 1
 
 				inputs["difficulty"] = 6
 				inputs["speed"] = 1
@@ -1455,34 +1636,101 @@ class RollSubmitButtons(discord.ui.ActionRow):
 				self.__view.clear_items()
 				self.__view.texthelp = discord.ui.TextDisplay("Select options to customise the roll.")
 				inputs["sins"] = 1
+			elif selection == "Magic Path":
+				self.__view.clear_items()
+				self.__view.texthelp = discord.ui.TextDisplay("Select options to customise the roll.")
+				inputs["wounds"] = 1
+				inputs["magicpath"] = 1
+				inputs["magicdiff"] = 1
 			else:
+				self.__view.clear_items()
 				self.__view.texthelp = discord.ui.TextDisplay("{} is not supported yet".format(selection))
 
 			# Stats
 			self.__view.container1 = discord.ui.Container()
+			# if inputs["attribute_type"]:
+			# 	# Attribute Type
+			# 	self.__view.attrtypear = discord.ui.ActionRow(id=forminputIDs["AttributeTypePulldownActionRow"])
+			# 	self.__view.attrtypear.add_item(RollAttributeTypeDropdown(self.__view, self.characterdata))
+			# 	self.__view.textattrtype = discord.ui.TextDisplay("Which type of attribute")
+			# 	self.__view.container1.add_item(self.__view.textattrtype)
+			# 	self.__view.container1.add_item(self.__view.attrtypear)
+			if inputs["attribute"]:
+				# Attribute
+				self.__view.attrar = discord.ui.ActionRow(id=forminputIDs["AttributePulldownActionRow"])
+				self.__view.attrar.add_item(RollAttributeDropdown(self.__view, self.characterdata))
+				self.__view.textattr = discord.ui.TextDisplay("Which attribute")
+				self.__view.container1.add_item(self.__view.textattr)
+				self.__view.container1.add_item(self.__view.attrar)
+			if inputs["ability_type"]:
+				# Ability Type
+				self.__view.abiltypear = discord.ui.ActionRow(id=forminputIDs["AbilityTypePulldownActionRow"])
+				self.__view.abiltypear.add_item(RollAbilityTypeDropdown(self.__view, self.characterdata))
+				self.__view.textabiltype = discord.ui.TextDisplay("Which type of ability")
+				self.__view.container1.add_item(self.__view.textabiltype)
+				self.__view.container1.add_item(self.__view.abiltypear)
+			if inputs["ability"]:
+				# Ability
+				self.__view.abilar = discord.ui.ActionRow(id=forminputIDs["AbilityPulldownActionRow"])
+				self.__view.abilar.add_item(RollAbilityDropdown(self.__view))
+				self.__view.textabil = discord.ui.TextDisplay("Which ability")
+				self.__view.container1.add_item(self.__view.textabil)
+				self.__view.container1.add_item(self.__view.abilar)
 			if inputs["celerity"]:
+				# How much Celerity is added to Dex
+				self.__view.celerityar = discord.ui.ActionRow(id=forminputIDs["CelerityPulldownActionRow"])
+				self.__view.celerityar.add_item(RollAddCelerityDropdown(self.__view, celerity=info["Celerity"]))
+				self.__view.textcel = discord.ui.TextDisplay("Choose how much of your Celerity is being used for Initiative (Total - number of extra rounds)")
 				self.__view.container1.add_item(self.__view.textcel)
 				self.__view.container1.add_item(self.__view.celerityar)
 			if inputs["dexterity"]:
+				# Spending blood on Dexterity
+				self.__view.dexterityar = discord.ui.ActionRow(id=forminputIDs["DexterityPulldownActionRow"])
+				self.__view.dexterityar.add_item(RollAddStatBoostDropdown(self.__view, info["Dexterity"], "Dexterity", int(max_rating)))
+				self.__view.textdex = discord.ui.TextDisplay("Choose how much blood you have spent to boost Dexterity")
 				self.__view.container1.add_item(self.__view.textdex)
 				self.__view.container1.add_item(self.__view.dexterityar)
 			if inputs["stamina"]:
+				# Spend blood on Stamina
+				self.__view.staminaar = discord.ui.ActionRow(id=forminputIDs["StaminaPulldownActionRow"])
+				self.__view.staminaar.add_item(RollAddStatBoostDropdown(self.__view, info["Stamina"], "Stamina", int(max_rating)))
+				self.__view.textstam = discord.ui.TextDisplay("Choose how much blood you have spent to boost Stamina")
 				self.__view.container1.add_item(self.__view.textstam)
 				self.__view.container1.add_item(self.__view.staminaar)
 			if inputs["strength"]:
+				# Spend blood on Strength
+				self.__view.strengthar = discord.ui.ActionRow(id=forminputIDs["StrengthPulldownActionRow"])
+				self.__view.strengthar.add_item(RollAddStatBoostDropdown(self.__view, info["Strength"], "Strength", int(max_rating)))
+				self.__view.textstr = discord.ui.TextDisplay("Select any boosts to Strength")
 				self.__view.container1.add_item(self.__view.textstr)
 				self.__view.container1.add_item(self.__view.strengthar)
 			# Misc pull-downs
 			if inputs["drivestat"]:
+				# Choose Dex or Wits
+				self.__view.drivestattext = discord.ui.TextDisplay("Select the attribute to use")
+				self.__view.drivestatar = discord.ui.ActionRow(id=forminputIDs["DriveStatPulldownActionRow"])
+				self.__view.drivestatar.add_item(RollDriveStatDropdown(self.__view))
 				self.__view.container1.add_item(self.__view.drivestattext)
 				self.__view.container1.add_item(self.__view.drivestatar)
 			if inputs["vehicle"]:
+				# Choose vehicle
+				self.__view.vehiclear = discord.ui.ActionRow(id=forminputIDs["VehiclePulldownActionRow"])
+				self.__view.vehiclear.add_item(RollVehicleDropdown(self.__view))
+				self.__view.vehicletext = discord.ui.TextDisplay("Select the vehicle to drive")
 				#self.__view.container1.add_item(self.__view.vehicletext)
 				self.__view.container1.add_item(self.__view.vehiclear)
 			if inputs["speed"]:
+				# +1 diff for every 10 mph over safe speed
+				self.__view.speedtext = discord.ui.TextDisplay("Select the speed")
+				self.__view.speedar = discord.ui.ActionRow(id=forminputIDs["SpeedPulldownActionRow"])
+				self.__view.speedar.add_item(RollSpeedDropdown(self.__view))
 				#self.__view.container1.add_item(self.__view.speedtext)
 				self.__view.container1.add_item(self.__view.speedar)
 			if inputs["backgrounds"]:
+				# list of backgrounds - name, spec, sector, level
+				self.__view.bgar = discord.ui.ActionRow(id=forminputIDs["BackgroundPulldownActionRow"])
+				self.__view.bgar.add_item(RollBackgroundDropdown(self.__view, self.characterdata))
+				self.__view.bgtext = discord.ui.TextDisplay("Select the background")
 				self.__view.container1.add_item(self.__view.bgtext)
 				self.__view.container1.add_item(self.__view.bgar)
 			if inputs["difficulty"]:
@@ -1493,26 +1741,68 @@ class RollSubmitButtons(discord.ui.ActionRow):
 				self.__view.container1.add_item(self.__view.textdiff)
 				self.__view.container1.add_item(self.__view.diffar)
 			if inputs["damage_type"]:
+				# Select Damage type, e.g. Lethal
+				self.__view.damagear = discord.ui.ActionRow(id=forminputIDs["DamageTypePulldownActionRow"])
+				self.__view.damagear.add_item(RollDmgTypeDropdown(self.__view))
+				self.__view.textdmg = discord.ui.TextDisplay("Select the damage type")
 				self.__view.container1.add_item(self.__view.textdmg)
 				self.__view.container1.add_item(self.__view.damagear)
 			if inputs["frenzy"]:
+				# Frenzy Difficulty
+				self.__view.frenzyar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
+				self.__view.frenzyar.add_item(RollFrenzyDiffDropdown(self.__view, default="provocation:6", clan=info["Clan"]))
+				self.__view.textfrenzy = discord.ui.TextDisplay("Select the difficulty")
 				self.__view.container1.add_item(self.__view.textfrenzy)
 				self.__view.container1.add_item(self.__view.frenzyar)
 			if inputs["rotschreck"]:
+				# Rotschreck difficulty
+				self.__view.rotsar = discord.ui.ActionRow(id=forminputIDs["DifficultyPulldownActionRow"])
+				self.__view.rotsar.add_item(RollRotschreckDiffDropdown(self.__view, default="bonfire:6"))
+				self.__view.textrots = discord.ui.TextDisplay("Select the difficulty")
 				self.__view.container1.add_item(self.__view.textrots)
 				self.__view.container1.add_item(self.__view.rotsar)
 			if inputs["wounds"]:
+				# Wound penalties
+				self.__view.woundsar = discord.ui.ActionRow(id=forminputIDs["WoundPulldownActionRow"])
+				self.__view.woundsar.add_item(RollWoundDropdown(self.__view))
+				self.__view.woundstr = discord.ui.TextDisplay("Select any wound penalties")
 				self.__view.container1.add_item(self.__view.woundstr)
 				self.__view.container1.add_item(self.__view.woundsar)
 			if inputs["duration"]:
+				# Duration
+				self.__view.difftimear = discord.ui.ActionRow(id=forminputIDs["TimescalePulldownActionRow"])
+				self.__view.difftimear.add_item(RollAuspexTimescaleDropdown(self.__view))
+				self.__view.difftimestr = discord.ui.TextDisplay("Select how long ago the impression was made")
 				self.__view.container1.add_item(self.__view.difftimestr)
 				self.__view.container1.add_item(self.__view.difftimear)
 			if inputs["intensity"]:
+				# Intensity of Impression
+				self.__view.diffintenar = discord.ui.ActionRow(id=forminputIDs["IntensityPulldownActionRow"])
+				self.__view.diffintenar.add_item(RollAuspexIntensityDropdown(self.__view))
+				self.__view.diffintenstr = discord.ui.TextDisplay("Select the strength of impression")
 				self.__view.container1.add_item(self.__view.diffintenstr)
 				self.__view.container1.add_item(self.__view.diffintenar)
 			if inputs["sins"]:
+				# Hierarchy of Sins
+				self.__view.sinsar = discord.ui.ActionRow(id=forminputIDs["SinsPulldownActionRow"])
+				self.__view.sinsar.add_item(RollSinsDropdown(self.__view, info["Path of Enlightenment Info"]))
+				self.__view.textsins = discord.ui.TextDisplay("I have committed...")
 				self.__view.container1.add_item(self.__view.textsins)
 				self.__view.container1.add_item(self.__view.sinsar)
+			if inputs["magicpath"]:
+				# Magic Path Disciple choice
+				self.__view.magicar = discord.ui.ActionRow(id=forminputIDs["MagicPathPulldownActionRow"])
+				self.__view.magicar.add_item(RollMagicPathDropdown(self.__view, self.characterdata))
+				self.__view.textmagic = discord.ui.TextDisplay("Select path")
+				self.__view.container1.add_item(self.__view.textmagic)
+				self.__view.container1.add_item(self.__view.magicar)
+			if inputs["magicdiff"]:
+				# Magic Path difficulties
+				self.__view.magicdiffar = discord.ui.ActionRow(id=forminputIDs["MagicPathDiffPulldownActionRow"])
+				self.__view.magicdiffar.add_item(RollMagicPathDiffDropdown(self.__view))
+				self.__view.textmagicdiff = discord.ui.TextDisplay("Which path level")
+				self.__view.container1.add_item(self.__view.textmagicdiff)
+				self.__view.container1.add_item(self.__view.magicdiffar)
 
 			if len(self.__view.container1.children) > 0:
 				self.__view.add_item(self.__view.container1)
@@ -1520,14 +1810,24 @@ class RollSubmitButtons(discord.ui.ActionRow):
 			# Check boxes
 			self.__view.container2 = discord.ui.Container()
 			if inputs["willpower"]:
+				# Spend willpower
+				self.__view.wpsection = discord.ui.Section("Spend Willpower", accessory=RollCheckButton("Off"), id=forminputIDs["WillpowerButton"])
 				self.__view.container2.add_item(self.__view.wpsection)
 			if inputs["speciality"]:
+				# Has a speciality
+				self.__view.speciality = discord.ui.Section("Have a relevant speciality", accessory=RollCheckButton("Off"), id=forminputIDs["SpecialityButton"])
 				self.__view.container2.add_item(self.__view.speciality)
 			if inputs["weather"]:
+				# +1 diff rain
+				self.__view.weather = discord.ui.Section("+1 difficulty for bad weather", accessory=RollCheckButton("Off"), id=forminputIDs["WeatherButton"])
 				self.__view.container2.add_item(self.__view.weather)
 			if inputs["traffic"]:
+				# +1 diff heavy traffic
+				self.__view.traffic = discord.ui.Section("+1 difficulty for heavy traffic", accessory=RollCheckButton("Off"), id=forminputIDs["TrafficButton"])
 				self.__view.container2.add_item(self.__view.traffic)
 			if inputs["pursuit"]:
+				# +1 diff pursuit
+				self.__view.pursuit = discord.ui.Section("+1 difficulty for pursuit", accessory=RollCheckButton("Off"), id=forminputIDs["PursuitButton"])
 				self.__view.container2.add_item(self.__view.pursuit)
 
 			if len(self.__view.container2.children) > 0:
@@ -1566,7 +1866,7 @@ class RollToggleButtonsRow1(discord.ui.ActionRow):
 		self.__view = view
 		super().__init__()
 
-	@discord.ui.button(label="(To Do) Attribute + Ability", style=discord.ButtonStyle.secondary)
+	@discord.ui.button(label="Attribute + Ability", style=discord.ButtonStyle.secondary)
 	async def select_attabil(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
 		for b in self.children:
 			b.style = discord.ButtonStyle.secondary
@@ -1576,7 +1876,7 @@ class RollToggleButtonsRow1(discord.ui.ActionRow):
 			d.style = discord.ButtonStyle.secondary
 		button.style = discord.ButtonStyle.primary
 
-		self.__view.info.content = "Customise to select options"
+		self.__view.info.content = "Defaults to Perception + Alertness at difficulty 6. Choose customise for different attributes, abilities and modifiers."
 		await interaction.response.edit_message(view=self.__view)
 	
 	@discord.ui.button(label="Initiative", style=discord.ButtonStyle.secondary)
@@ -1628,7 +1928,7 @@ class RollToggleButtonsRow1(discord.ui.ActionRow):
 		button.style = discord.ButtonStyle.primary
 
 		if self.__view.characterdata is None:
-			self.__view.characterdata = get_char_from_pulldown(self.__view)
+			self.__view.characterdata = await get_char_from_pulldown(self.__view)
 		selfcontrol = get_attribute_level(self.__view.characterdata, "Self Control")
 		if int(selfcontrol) == 0:
 			button.disabled = True
@@ -1693,7 +1993,7 @@ class RollToggleButtonsRow2(discord.ui.ActionRow):
 		button.style = discord.ButtonStyle.primary
 
 		if self.__view.characterdata is None:
-			self.__view.characterdata = get_char_from_pulldown(self.__view)
+			self.__view.characterdata = await get_char_from_pulldown(self.__view)
 
 		auspex = get_discipline_level(self.__view.characterdata, "Auspex")
 		if int(auspex) < 2:
@@ -1716,7 +2016,7 @@ class RollToggleButtonsRow2(discord.ui.ActionRow):
 		button.style = discord.ButtonStyle.primary
 
 		if self.__view.characterdata is None:
-			self.__view.characterdata = get_char_from_pulldown(self.__view)
+			self.__view.characterdata = await get_char_from_pulldown(self.__view)
 
 		auspex = get_discipline_level(self.__view.characterdata, "Auspex")
 		if int(auspex) < 3:
@@ -1759,7 +2059,7 @@ class RollToggleButtonsRow3(discord.ui.ActionRow):
 		self.__view.info.content = "Concience/Conviction roll, diff 8, for a 40+ level sin."
 		await interaction.response.edit_message(view=self.__view)
 
-	@discord.ui.button(label="Magic", style=discord.ButtonStyle.secondary)
+	@discord.ui.button(label="Magic Path", style=discord.ButtonStyle.secondary)
 	async def select_magic(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
 		for b in self.children:
 			b.style = discord.ButtonStyle.secondary
@@ -1769,7 +2069,16 @@ class RollToggleButtonsRow3(discord.ui.ActionRow):
 			d.style = discord.ButtonStyle.secondary
 		button.style = discord.ButtonStyle.primary
 
-		self.__view.info.content = "Roll your magic."
+		if self.__view.characterdata is None:
+			self.__view.characterdata = get_char_from_pulldown(self.__view)
+
+		if len(self.__view.characterdata["primary_paths"]) == 0:
+			button.disabled = True
+			button.style = discord.ButtonStyle.danger
+			self.__view.info.content = "Choose another option - character does not have any magic"
+		else:
+			self.__view.info.content = "Willpower roll, difficulty based on using a level 1 path"
+
 		await interaction.response.edit_message(view=self.__view)
 
 
@@ -1818,6 +2127,36 @@ class RollSelectionButton(discord.ui.Button):
 			info["Difficulty"] = 0
 			str = format_initiative(result, info)
 		
+		elif self.label == "Roll Attribute + Ability":
+
+			if info["Attribute Info"] == None or info["Attribute Info"] == "":
+				rollok = 0
+				self.view.texthelp.content = "ERROR: select an attribute"
+			else:
+				result = roll_pool(info["Attribute"] + info["Ability"] + info["Wound Penalty"], info["Difficulty"])
+				
+				pool = "{} {}".format(info["Attribute"], info["Attribute Info"])
+				if info["Ability Info"] != "":
+					pool = pool + " + {} {}".format(info["Ability"], info["Ability Info"])
+				if info["Attribute Info"] == "Dexterity" and info["Effective Celerity"] > 0:
+					pool = pool + " Celerity {}".format(info["Effective Celerity"])
+
+				breakdown = ""
+				if int(result["willpower"]) == 1:
+					breakdown += "One success was gained from Willpower. "
+				if info["Wound Penalty Info"] != "":
+					breakdown += "{} is {}. ".format(info["character_name"], info["Wound Penalty Info"])
+
+				str = format_roll(info["character_name"],
+					"Attribute + Ability",
+					result["description"],
+					info["detail"],
+					pool,
+					result["difficulty"],
+					result["rolls"],
+					breakdown
+					)
+		
 		elif self.label == "Roll Soak":
 			if info["damage_type"] == "Aggravated":
 				if info["Fortitude"] == 0:
@@ -1838,7 +2177,7 @@ class RollSelectionButton(discord.ui.Button):
 			str = format_frenzy(result, info)
 
 		elif self.label == "Roll Feats of Strength":
-			pool = max(0, info["Willpower"] - info["Wound Penalty"])
+			pool = max(0, info["Willpower"] + info["Wound Penalty"])
 			result = roll_pool(int(pool),9)
 			str = format_featofstr(result, info)
 
@@ -1945,7 +2284,7 @@ class RollSelectionButton(discord.ui.Button):
 				breakdown += "One success was gained from Willpower. "
 			if spec:
 				breakdown += "{} had a relevant speciality. ".format(self.characterdata["name"])
-			if info["Wound Penalty"] > 0:
+			if info["Wound Penalty"] < 0:
 				breakdown += "{} is {}".format(self.characterdata["name"], info["Wound Penalty Info"])
 
 			str = format_roll(info["character_name"],
@@ -1962,6 +2301,11 @@ class RollSelectionButton(discord.ui.Button):
 			statlevel = info[info["Path Attribute"]]
 			result = roll_pool(statlevel, 8)
 			str = format_degeneration(result, info)			
+
+		elif self.label == "Roll Magic Path":
+
+			result = roll_pool(info["Willpower"] + info["Wound Penalty"], info["Magic Path Difficulty"])
+			str = format_magicpath(result, info)		
 
 		else:
 			str = self.label + " is unsupported"
@@ -1986,7 +2330,7 @@ class RollSelectionButton(discord.ui.Button):
 
 # See embed_like.py
 class RollPage1LayoutView(discord.ui.LayoutView):
-	def __init__(self, server: str, nameid : str, characterdata = None, isST = False):
+	def __init__(self, server: str, nameid : str, characterdata = None, isST = False, activecharacters=None):
 		super().__init__()
 		self.characterdata = characterdata
 		self.isST = isST
@@ -1998,34 +2342,17 @@ class RollPage1LayoutView(discord.ui.LayoutView):
 		else:
 			bloodperround = 0
 
-		# Form pieces
-		# - Wound modifiers - pulldown
-		# - Speciality applied? - yes/no
-		# - Spend Blood. How much can they spend in a round? - 
-		# - Difficulties - pulldown
-		# - Description = textbox (can't do this - Modal only)
-		# self.woundmod = discord.ui.Section("Wound Modifier", accessory=discord.ui.Select(
-		# 	options = [
-		# 		discord.SelectOption(label="Bruised (0)", value="0", default=True),
-		# 		discord.SelectOption(label="Hurt (-1)", value="-1"),
-		# 		discord.SelectOption(label="Injured (-1)", value="-1"),
-		# 		discord.SelectOption(label="Wounded (-2)", value="-2"),
-		# 		discord.SelectOption(label="Mauled (-2)", value="-2"),
-		# 		discord.SelectOption(label="Crippled (-5)", value="-5")
-		# 	]
-		# ))
-		# self.usespeciality = discord.ui.Section("Use Speciality:", accessory=RollCheckButton())
-
 		self.info = discord.ui.TextDisplay("You can choose to customise the roll, or roll with the defaults.")
 		if self.isST:
 			self.hello = discord.ui.TextDisplay("Hello Storyteller. Choose the active character to roll for")
 			# By default, select the character returned in characterdata
-			activecharacters = get_active_characters(server, nameid)
-			activecharacterslist = sort_character_list(activecharacters["result"])
+			if activecharacters is None:
+				activecharacterslist = []
+			else:
+				activecharacterslist = sort_character_list(activecharacters.get("result", []))
 
-
-			if "code" in activecharacters:
-				self.info = discord.ui.TextDisplay("Character list failed: {}.".format(activecharacters["message"]))
+			if activecharacters is None or "code" in activecharacters:
+				self.info = discord.ui.TextDisplay("Character list failed: {}.".format(activecharacters["message"] if activecharacters else "No data"))
 			else:
 				self.clanChoices = RollClanChoices(self, activecharacterslist)
 				self.charChoices = RollCharChoices(self, activecharacterslist)
@@ -2055,10 +2382,17 @@ class RollPage1LayoutView(discord.ui.LayoutView):
 
 
 
-	async def on_error(self, interaction: discord.Interaction, error: Exception):
-		await interaction.response.send_message("An error occurred while processing the roll page.")
-		traceback.print_exception(type(error), error, error.__traceback__)
-		print(f"Error in RollPage1View: {error}")
+	async def on_error(self, interaction: discord.Interaction, error: Exception, item=None):
+		logging.error("RollPage1View on_error called for item=%s", item)
+		logging.error("RollPage1View exception", exc_info=(type(error), error, error.__traceback__))
+		try:
+			if interaction.response.is_done():
+				await interaction.followup.send("An error occurred while processing the roll page.")
+			else:
+				await interaction.response.send_message("An error occurred while processing the roll page.")
+		except Exception as send_error:
+			logging.error("Failed to send error response", exc_info=(type(send_error), send_error, send_error.__traceback__))
+		logging.error("Error in RollPage1View: %s", error)
 
 
 class DiceRoller(commands.Cog):
@@ -2067,12 +2401,18 @@ class DiceRoller(commands.Cog):
 		self._last_member = None
 
 	async def cog_app_command_error(self, ctx, error):
-		if isinstance(error, discord.app_commands.CheckFailure):
-			await ctx.response.send_message("I'm sorry Master. {}".format(error))
-		else:
-			await ctx.response.send_message("I'm sorry Master, the command failed.")
-			traceback.print_exception(type(error), error, error.__traceback__)
-			print(error)
+		try:
+			if isinstance(error, discord.app_commands.CheckFailure):
+				await ctx.response.send_message("I'm sorry Master. {}".format(error))
+			else:
+				await ctx.response.send_message("I'm sorry Master, the command failed.")
+		except discord.NotFound:
+			logging.error("Interaction not found when sending app command error response")
+		except discord.HTTPException as he:
+			logging.error("Failed to send app command error response: %s", he)
+		except Exception as send_err:
+			logging.error("Unexpected error while sending app command error response", exc_info=(type(send_err), send_err, send_err.__traceback__))
+		logging.error("App command handler exception", exc_info=(type(error), error, error.__traceback__))
 
 
 	@check_restapi_active()
@@ -2083,24 +2423,48 @@ class DiceRoller(commands.Cog):
 		nameid = ctx.user.id
 		server = ctx.guild.name
 		try:
-			isST = is_storyteller(nameid, server)
+			isST = await is_storyteller(nameid, server)
 		except Exception as e:
-			print(e)
+			logging.error("Failed to determine storyteller status", exc_info=(type(e), e, e.__traceback__))
+			isST = False
 			
-		charinfo = get_my_character(nameid, server)
+		charinfo = await get_my_character(nameid, server)
 		if not isST and "code" in charinfo:
-			await ctx.response.send_message(charinfo["message"])
+			try:
+				await ctx.response.send_message(charinfo["message"])
+			except discord.NotFound:
+				logging.error("Interaction not found when sending rollme failure message")
+			except discord.HTTPException as he:
+				logging.error("Failed to send rollme failure message: %s", he)
+			except Exception as e:
+				logging.error("Unexpected error sending rollme failure message", exc_info=(type(e), e, e.__traceback__))
 		else:
-			await ctx.response.send_message(view=RollPage1LayoutView(server, nameid, charinfo["result"], isST=isST), ephemeral=True)
+			activecharacters = None
+			if isST:
+				activecharacters = await get_active_characters(server, nameid)
+			try:
+				await ctx.response.send_message(view=RollPage1LayoutView(server, nameid, charinfo["result"], isST=isST, activecharacters=activecharacters), ephemeral=True)
+			except discord.NotFound:
+				logging.error("Interaction not found when sending rollme view")
+			except discord.HTTPException as he:
+				logging.error("Failed to send rollme view: %s", he)
+			except Exception as e:
+				logging.error("Unexpected error sending rollme view", exc_info=(type(e), e, e.__traceback__))
 
 	
 	async def rollmy_error(self, ctx, error):
-		if isinstance(error, commands.MissingRequiredArgument):
-			await ctx.response.send_message("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
-		else:
-			await ctx.response.send_message("I'm sorry Master, the command failed.")
-			traceback.print_exception(type(error), error, error.__traceback__)
-			print(error)
+		try:
+			if isinstance(error, commands.MissingRequiredArgument):
+				await ctx.response.send_message("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
+			else:
+				await ctx.response.send_message("I'm sorry Master, the command failed.")
+		except discord.NotFound:
+			logging.error("Interaction not found when sending rollmy error response")
+		except discord.HTTPException as he:
+			logging.error("Failed to send rollmy error response: %s", he)
+		except Exception as send_err:
+			logging.error("Unexpected error while sending rollmy error response", exc_info=(type(send_err), send_err, send_err.__traceback__))
+		logging.error("Rollmy command error", exc_info=(type(error), error, error.__traceback__))
 
 
 	@app_commands.command(name='rollpool', description='Dice roller')
@@ -2122,8 +2486,7 @@ class DiceRoller(commands.Cog):
 				else:
 					await ctx.response.send_message("Master {}, Your roll for '{}' is a {}. You rolled: ".format(author, note, result["description"]) + formatdice(result["rolls"]))
 			except Exception as e:
-				print('Renfield is confused')
-				print(e)
+				logging.error("Renfield is confused while rolling dice", exc_info=(type(e), e, e.__traceback__))
 
 
 	# @commands.error
@@ -2132,8 +2495,15 @@ class DiceRoller(commands.Cog):
 			# await ctx.send("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
 
 	async def cog_command_error(self, ctx, error):
-		if isinstance(error, commands.MissingRequiredArgument):
-			await ctx.response.send_message("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
+		try:
+			if isinstance(error, commands.MissingRequiredArgument):
+				await ctx.response.send_message("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
+		except discord.NotFound:
+			logging.error("Interaction not found when sending cog command error response")
+		except discord.HTTPException as he:
+			logging.error("Failed to send cog command error response: %s", he)
+		except Exception as send_err:
+			logging.error("Unexpected error while sending cog command error response", exc_info=(type(send_err), send_err, send_err.__traceback__))
 
 async def setup(bot):
 	await bot.add_cog(DiceRoller(bot))
@@ -2210,7 +2580,7 @@ def format_roll (name: str, selection: str, text: str, detail: str, pool: str, d
 		long += "\n*Breakdown*\n"
 		long += "> Roll(s):"+ formatdice(rolls)
 		if breakdown != "":
-			long += "\n> {}".format(breakdown)
+			long += "\n|| {}||".format(breakdown)
 	
 	return long
 
@@ -2497,6 +2867,7 @@ def format_degeneration(result, info):
 
 	stat = info["Path Attribute"]
 	path = info["Path of Enlightenment Info"]
+	breakdown = ""
 
 
 	if "Path of" not in path:
@@ -2510,29 +2881,38 @@ def format_degeneration(result, info):
 	else:
 		hierarchy = hierarchyofsin["Humanity"]
 
-	if result["description"] == "Botch":
-		str = "{} has botched their roll. They lose 10 on the {}, 1 level of {}, and gain a derangement.".format(character_name, path, stat)
-		newlevel = info["Path of Enlightenment"] - 10
+	if info["Sins"] > 0 and info["Sins"] <= 30:
+		# cardinal sin
+		str = "{} has committed a cardinal sin and lost 10 on their {}.".format(character_name, path)
 		pointslost = 10
+	elif info["Sins"] > 0 and info["Path of Enlightenment"] <= info["Sins"]:
+		# don't care
+		str = "{} has committed worse than that already and doesn't care - no points lost.".format(character_name, path)
+		pointslost = 0
 	else:
-		pointslost = 10 - (2 * success)
-		newlevel = info["Path of Enlightenment"] - int(pointslost)
-		if pointslost == 0:
-			str = "{} has felt remorse at their actions and retained their level in the {}".format(character_name, path)
-		elif newlevel <= 0:
-			str = "{} has lost everything in their path and fallen to the beast.".format(character_name)
+		# roll
+		if result["description"] == "Botch":
+			str = "{} has botched their roll. They lose 10 on the {}, 1 level of {}, and gain a derangement.".format(character_name, path, stat)
+			pointslost = 10
 		else:
-			if pointslost == 10:
-				level = "fully"
+			pointslost = 10 - (2 * success)
+			newlevel = info["Path of Enlightenment"] - int(pointslost)
+			if pointslost == 0:
+				str = "{} has felt remorse at their actions and retained their level in the {}".format(character_name, path)
+			elif newlevel <= 0:
+				str = "{} has lost everything in their path and fallen to the beast.".format(character_name)
 			else:
-				level = "partially"
-			str = "{} has {} accepted their act and lost {} points of their path.".format(character_name, level, pointslost)
+				if pointslost == 10:
+					str = "{} has accepted their act and have lost {} points of their path.".format(character_name, pointslost)
+				else:
+					str = "{} suffers some remorse but has justified some of their act to themselves. They have lost {} points of their path.".format(character_name, pointslost)
 
-	breakdown = ""
-	for sin in hierarchy:
-		if int(hierarchy[sin]) < newlevel:
-			breakdown = "The next worst thing you could do is '{}'. ". format(sin)
-			break
+			for sin in hierarchy:
+				if int(hierarchy[sin]) < newlevel:
+					breakdown = "The next worst thing you could do based on your current path rating is '{}'. ". format(sin)
+					break
+
+	newlevel = info["Path of Enlightenment"] - int(pointslost)
 	breakdown += "Their new rating is {}. ".format(newlevel)
 	if pointslost > 0:
 		breakdown += "See the storyteller to update your character sheet."
@@ -2547,6 +2927,38 @@ def format_degeneration(result, info):
 				   breakdown)
 	
 	return str
+
+def format_magicpath(result, info):
+	success = int(result["total"])
+	character_name = info["character_name"]
+
+	if result["description"] == "Botch":
+		str = "{} has botched and their magic has catastrophically backfired".format(character_name)
+	elif success <= 0:
+		str = "{} has failed.".format(character_name, result["description"])
+	else:
+		str = "{} has succeeded.".format(character_name)
+
+	pool = "{} Willpower".format(info["Willpower"])
+
+	breakdown = "{} is using the {} path, '{}' at level {}. ".format(character_name, info["Magic Discipline"], info["Magic Path Info"], info["Effective Magic Path"])
+	if info["Wound Penalty Info"] != "":
+		breakdown += "{} is {}. ".format(character_name, info["Wound Penalty Info"])
+	if info["Effective Magic Path"] != info["Magic Path"]:
+		breakdown += "They have this path at level {}. ".format(info["Magic Path"])
+
+
+	str = format_roll(character_name,
+				   "Magical Path",
+				   str,
+				   info["detail"],
+				   pool,
+				   result["difficulty"],
+				   result["rolls"],
+				   breakdown)
+	
+	return str
+
 
 def get_level_from_character(characterdata, item: str, category: str = "all"):
 	if item in characterdata:
@@ -2702,17 +3114,16 @@ def get_max_level(characterdata):
 			max_rating = 5
 	return max_rating
 
-def get_char_from_pulldown(view):
+async def get_char_from_pulldown(view):
 	chardata = None
 
 	characterchoices = view.charChoices.char.options
 	for ch in characterchoices:
 		if ch.default == True:
 			characterID = str(ch.value)
-			newcharinfo = get_character(view.server, view.nameid, characterID)
+			newcharinfo = await get_character(view.server, view.nameid, characterID)
 			if "code" in newcharinfo:
 				logging.info("Failed to obtain character data for {}",format(characterID))
-				print(newcharinfo)
 			else:
 				logging.info("Obtained character data for " + newcharinfo["result"]["name"])
 				chardata = newcharinfo["result"]
@@ -2734,6 +3145,7 @@ def load_info(view: RollPage1LayoutView, characterdata):
 	info["Timescale"] = 0
 	info["Intensity"] = 0
 
+
 	info["Celerity"] = int(get_discipline_level(characterdata, "Celerity"))
 	info["Effective Celerity"] = int(info["Celerity"])
 	info["Fortitude"] = int(get_discipline_level(characterdata, "Fortitude"))
@@ -2754,12 +3166,18 @@ def load_info(view: RollPage1LayoutView, characterdata):
 	info["Conscience"] = int(get_attribute_level(characterdata, "Conscience"))
 	info["Conviction"] = int(get_attribute_level(characterdata, "Conviction"))
 
+	info["Attribute Info"] = ""
+	info["Attribute"] = 0
+	info["Ability Info"] = ""
+	info["Ability"] = 0
+
 	info["Path of Enlightenment Info"] = characterdata["path_of_enlightenment"]
 	info["Path of Enlightenment"] = int(characterdata["path_rating"])
 	info["Sins"] = 0
 	info["Sins Info"] = ""
 
 	info["Empathy"] = int(get_level_from_character(characterdata, "Empathy", "abilites"))
+	info["Alertness"] = int(get_level_from_character(characterdata, "Alertness", "abilites"))
 	info["Driving"] = int(get_level_from_character(characterdata, "Drive", "abilites"))
 	info["Driving Ability"] = "Dexterity"
 	info["Vehicle"] = "Sedan (4)"
@@ -2778,6 +3196,36 @@ def load_info(view: RollPage1LayoutView, characterdata):
 
 	info["Difficulty"] = 6
 	info["Difficulty Description"] = ""
+
+	info["Magic Path Difficulty"] = 4
+	info["Magic Path Info"] = ""
+	info["Magic Path"] = 0
+	info["Magic Discipline"] = ""
+	info["Effective Magic Path"] = 1
+	primary_paths = characterdata["primary_paths"]
+	secondary_paths = characterdata["secondary_paths"]
+	if "Thaumaturgy" in primary_paths:
+		info["Magic Discipline"] = "Thaumaturgy"
+		if "Path of Blood" in primary_paths["Thaumaturgy"]:
+			info["Magic Path Info"] = "Path of Blood"
+			pathinfo = primary_paths["Thaumaturgy"]["Path of Blood"]
+			info["Magic Path"] = int(pathinfo[0])
+		else:
+			for path in primary_paths["Thaumaturgy"]:
+				info["Magic Path Info"] = path
+				pathinfo = primary_paths["Thaumaturgy"][path]
+				info["Magic Path"] = int(pathinfo[0])
+				break
+	else:
+		for disc in primary_paths:
+			info["Magic Discipline"] = disc
+			for path in primary_paths[disc]:
+				info["Magic Path Info"] = path
+				pathinfo = primary_paths[disc][path]
+				info["Magic Path"] = int(pathinfo[0])
+				break
+			break
+
 
 	for input in view.walk_children():
 		# print(input.id)
@@ -2902,6 +3350,57 @@ def load_info(view: RollPage1LayoutView, characterdata):
 				value_str = option.value
 				info["Sins"] = int(value_str)
 				info["Sins Info"] = option.label
+		elif input.id == forminputIDs["MagicPathPulldownActionRow"]:
+			select = input.children[0]
+			option = discord.utils.get(select.options, default=True)
+			if option is None:
+				info["Magic Discipline"] = None
+				info["Magic Path Info"] = None
+			else:
+				value_str = option.value
+				info["Magic Discipline"] = value_str.split(':')[1]
+				test = value_str.split(':')[2]
+				if info["Magic Discipline"] in primary_paths:
+					for x in primary_paths[info["Magic Discipline"]]:
+						print (x)
+						if test == x.replace("\\",""):
+							info["Path Info"] = x.replace("\\","")
+							pathinfo = primary_paths[info["Magic Discipline"]][x]
+							info["Magic Path"] = int(pathinfo[0])
+				else:
+					pathinfo = secondary_paths[info["Magic Discipline"]][info["Magic Path Info"]]
+					info["Magic Path"] = int(pathinfo[0])
+		elif input.id == forminputIDs["MagicPathDiffPulldownActionRow"]:
+			select = input.children[0]
+			option = discord.utils.get(select.options, default=True)
+			if option is None:
+				info["Magic Path Difficulty"] = None
+				info["Effective Magic Path"] = None
+			else:
+				value_str = option.value
+				info["Magic Path Difficulty"] = int(value_str)
+				info["Effective Magic Path"] = int(value_str) - 3
+		elif input.id == forminputIDs["AttributePulldownActionRow"]:
+			select = input.children[0]
+			option = discord.utils.get(select.options, default=True)
+			if option is None:
+				info["Attribute Info"] = None
+				info["Attribute"] = None
+			else:
+				value_str = option.value
+				info["Attribute Info"] = value_str.split(':')[1]
+				info["Attribute"] = int(value_str.split(':')[3])
+		elif input.id == forminputIDs["AbilityPulldownActionRow"]:
+			select = input.children[0]
+			option = discord.utils.get(select.options, default=True)
+			if option is None:
+				info["Ability Info"] = None
+				info["Ability"] = int(0)
+			else:
+				value_str = option.value
+				info["Ability Info"] = value_str.split(':')[1]
+				info["Ability"] = int(value_str.split(':')[3])
+
 
 	info["blood"] = {}
 	info["blood"]["Dexterity"] =  info["Effective Dexterity"] - info["Dexterity"]
