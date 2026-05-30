@@ -253,7 +253,6 @@ helper.get('/auth-callback/', async (req, res) => {
 
     const responseText = await response.text()
     log('Token exchange completed')
-    console.log(responseText)
 
     // parse the response to get the new access token and secret
     const responseParams = new URLSearchParams(responseText);
