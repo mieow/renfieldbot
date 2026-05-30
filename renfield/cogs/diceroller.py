@@ -3,6 +3,7 @@ import discord
 import pprint
 import logging
 import traceback
+import re
 from discord.ext import commands
 from discord import Embed, app_commands
 from cogs.wordpress_api import get_my_character, get_character, is_storyteller, get_active_characters
@@ -34,7 +35,9 @@ forminputIDs = {
 	# "AttributeTypePulldownActionRow": 22,
 	"AttributePulldownActionRow": 23,
 	"AbilityTypePulldownActionRow": 24,
-	"AbilityPulldownActionRow": 25
+	"AbilityPulldownActionRow": 25,
+	"PotenceButton": 26,
+	"FortitudeButton": 27
 }
 
 canlift = [
@@ -461,7 +464,10 @@ class RollAbilityTypeDropdown(discord.ui.Select):
 # 		await interaction.response.edit_message(view=self.view)
 
 class RollAttributeDropdown(discord.ui.Select):
-	def __init__(self, view: 'RollPage1LayoutView', characterdata):	
+	def __init__(self, view: 'RollPage1LayoutView', characterdata, info):	
+
+		self.info = info
+		self.max_rating = get_max_level(characterdata)
 
 		options = []
 		for grp in characterdata["attributegroups"]:
@@ -487,6 +493,92 @@ class RollAttributeDropdown(discord.ui.Select):
 			opt.default = False
 			
 		discord.utils.get(self.options, value=selectedvalue).default = True
+
+		physstat = None
+		physdisc = None
+		if "Dexterity" in selectedvalue:
+			physstat = "Dexterity"
+			physdisc = "Celerity"
+		if "Stamina" in selectedvalue:
+			physstat = "Stamina"
+			physdisc = "Fortitude"
+		if "Strength" in selectedvalue:
+			physstat = "Strength"
+			physdisc = "Potence"
+
+		addcelerity = False
+		if self.info["Celerity"] > 0:
+			if physstat == "Dexterity":
+				addcelerity = True
+		addpotence = False
+		if self.info["Potence"] > 0:
+			if physstat == "Strength":
+				addpotence = True
+		addfortitude = False
+		if self.info["Fortitude"] > 0:
+			if physstat == "Stamina":
+				addfortitude = True
+
+		# Remove pulldowns
+		todelete = []
+		found = False
+		for childe in self.view.walk_children():
+			if childe.id == forminputIDs["DexterityPulldownActionRow"] and (physstat != "Dexterity"):
+				todelete.append(childe)
+			if childe.id == forminputIDs["CelerityPulldownActionRow"] and (physstat != "Dexterity"):
+				todelete.append(childe)
+			if childe.id == forminputIDs["StaminaPulldownActionRow"] and (physstat != "Stamina"):
+				todelete.append(childe)
+			if childe.id == forminputIDs["FortitudeButton"] and (physstat != "Stamina"):
+				todelete.append(childe)
+			if childe.id == forminputIDs["StrengthPulldownActionRow"] and (physstat != "Strength"):
+				todelete.append(childe)
+			if childe.id == forminputIDs["PotenceButton"] and (physstat != "Strength"):
+				todelete.append(childe)
+			if physstat is not None and childe.id == forminputIDs[f"{physstat}PulldownActionRow"]:
+				found = True
+			if isinstance(childe, discord.ui.TextDisplay):
+				match = re.search(r'Choose how much blood you have spent to boost (\w+)', childe.content)
+				if match:
+					if match.group(1) != physstat:
+						todelete.append(childe)
+				match = re.search(r'Add (\w+) to roll', childe.content)
+				if match:
+					if match.group(1) != physdisc:
+						todelete.append(childe)
+				if childe.content == r'Choose how much of your Celerity is being used for Dexterity (Total - number of extra rounds)':
+					todelete.append(childe)
+
+		for childe in todelete:
+			if isinstance(childe, discord.ui.ActionRow):
+				self.view.container1.remove_item(childe)
+			if isinstance(childe, discord.ui.TextDisplay):
+				self.view.container1.remove_item(childe)
+			if isinstance(childe, discord.ui.Section):
+				self.view.container2.remove_item(childe)
+
+		# Add stat boost pulldown if it isn't there already
+		if found is False and physstat is not None:
+			self.view.statboostar = discord.ui.ActionRow(id=forminputIDs[f"{physstat}PulldownActionRow"])
+			self.view.statboostar.add_item(RollAddStatBoostDropdown(self.view, self.info[physstat], physstat, int(self.max_rating)))
+			self.view.textboost = discord.ui.TextDisplay(f"Choose how much blood you have spent to boost {physstat}")
+			self.view.container1.add_item(self.view.textboost)
+			self.view.container1.add_item(self.view.statboostar)
+
+			if addcelerity:
+				self.view.celerityar = discord.ui.ActionRow(id=forminputIDs["CelerityPulldownActionRow"])
+				self.view.celerityar.add_item(RollAddCelerityDropdown(self.view, celerity=self.info["Celerity"]))
+				self.view.textcel = discord.ui.TextDisplay("Choose how much of your Celerity is being used for Dexterity (Total - number of extra rounds)")
+				self.view.container1.add_item(self.view.textcel)
+				self.view.container1.add_item(self.view.celerityar)
+
+			if addfortitude:
+				self.view.statbutton = discord.ui.Section("Add Fortitude to roll", accessory=RollCheckButton("Off"), id=forminputIDs["FortitudeButton"])
+				self.view.container2.add_item(self.view.statbutton)
+			if addpotence:
+				self.view.statbutton = discord.ui.Section("Add Potence to roll", accessory=RollCheckButton("Off"), id=forminputIDs["PotenceButton"])
+				self.view.container2.add_item(self.view.statbutton)
+			
 
 		await interaction.response.edit_message(view=self.view)
 
@@ -1342,7 +1434,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 					"{} Perception + {} Alertness".format(info["Perception"], info["Alertness"]),
 					result["difficulty"],
 					result["rolls"],
-					""
+					"",
 					)
 			elif selection == "Initiative":
 				result = roll_initiative(info=info)
@@ -1658,7 +1750,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 			if inputs["attribute"]:
 				# Attribute
 				self.__view.attrar = discord.ui.ActionRow(id=forminputIDs["AttributePulldownActionRow"])
-				self.__view.attrar.add_item(RollAttributeDropdown(self.__view, self.characterdata))
+				self.__view.attrar.add_item(RollAttributeDropdown(self.__view, self.characterdata, info))
 				self.__view.textattr = discord.ui.TextDisplay("Which attribute")
 				self.__view.container1.add_item(self.__view.textattr)
 				self.__view.container1.add_item(self.__view.attrar)
@@ -1680,7 +1772,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 				# How much Celerity is added to Dex
 				self.__view.celerityar = discord.ui.ActionRow(id=forminputIDs["CelerityPulldownActionRow"])
 				self.__view.celerityar.add_item(RollAddCelerityDropdown(self.__view, celerity=info["Celerity"]))
-				self.__view.textcel = discord.ui.TextDisplay("Choose how much of your Celerity is being used for Initiative (Total - number of extra rounds)")
+				self.__view.textcel = discord.ui.TextDisplay("Choose how much of your Celerity is being used for Dexterity (Total - number of extra rounds)")
 				self.__view.container1.add_item(self.__view.textcel)
 				self.__view.container1.add_item(self.__view.celerityar)
 			if inputs["dexterity"]:
@@ -2117,7 +2209,6 @@ class RollSelectionButton(discord.ui.Button):
 
 		rollok = 1
 		info = load_info(view, self.characterdata)
-		print(info)
 
 		view.info.content = "Rolling " + self.selection
 
@@ -2133,19 +2224,40 @@ class RollSelectionButton(discord.ui.Button):
 				rollok = 0
 				self.view.texthelp.content = "ERROR: select an attribute"
 			else:
-				result = roll_pool(info["Attribute"] + info["Ability"] + info["Wound Penalty"], info["Difficulty"])
+				if info["Speciality OnOff"] == "On":
+					spec = True
+				else:
+					spec = False
+
+				text = "Effective " + info["Attribute Info"]
+				dicepool = info[text] + info["Ability"] + info["Wound Penalty"]
+
+				if info["Potence OnOff"] == "On":
+					dicepool += info["Potence"]
+				if info["Fortitude OnOff"] == "On":
+					dicepool += info["Fortitude"]
+				if info["Attribute Info"] == "Dexterity" and info["Effective Celerity"] > 0:
+					dicepool += info["Celerity"]
+
+				result = roll_pool(dicepool, info["Difficulty"],spec, info["Willpower OnOff"])
 				
-				pool = "{} {}".format(info["Attribute"], info["Attribute Info"])
-				if info["Ability Info"] != "":
+				pool = "{} {}".format(info[text], info["Attribute Info"])
+				if info["Ability Info"] != None and info["Ability Info"] != "":
 					pool = pool + " + {} {}".format(info["Ability"], info["Ability Info"])
 				if info["Attribute Info"] == "Dexterity" and info["Effective Celerity"] > 0:
-					pool = pool + " Celerity {}".format(info["Effective Celerity"])
+					pool = pool + " + Celerity {}".format(info["Effective Celerity"])
+				if info["Potence OnOff"] == "On":
+					pool = pool + " + Potence {}".format(info["Potence"])
+				if info["Fortitude OnOff"] == "On":
+					pool = pool + " + Fortitude {}".format(info["Fortitude"])
 
 				breakdown = ""
-				if int(result["willpower"]) == 1:
+				if info["Willpower OnOff"] == "On":
 					breakdown += "One success was gained from Willpower. "
 				if info["Wound Penalty Info"] != "":
 					breakdown += "{} is {}. ".format(info["character_name"], info["Wound Penalty Info"])
+				if info["Speciality OnOff"] == "On":
+					breakdown += "They have a relevant speciality. "
 
 				str = format_roll(info["character_name"],
 					"Attribute + Ability",
@@ -2580,7 +2692,7 @@ def format_roll (name: str, selection: str, text: str, detail: str, pool: str, d
 		long += "\n*Breakdown*\n"
 		long += "> Roll(s):"+ formatdice(rolls)
 		if breakdown != "":
-			long += "\n|| {}||".format(breakdown)
+			long += "\n> {}".format(breakdown)
 	
 	return long
 
@@ -3151,6 +3263,8 @@ def load_info(view: RollPage1LayoutView, characterdata):
 	info["Fortitude"] = int(get_discipline_level(characterdata, "Fortitude"))
 	info["Potence"] = int(get_discipline_level(characterdata, "Potence"))
 	info["Auspex"] = int(get_discipline_level(characterdata, "Auspex"))
+	info["Fortitude OnOff"] = None
+	info["Potence OnOff"] = None
 
 	info["Dexterity"] = int(get_attribute_level(characterdata, "Dexterity"))
 	info["Effective Dexterity"] = int(info["Dexterity"])
@@ -3169,7 +3283,7 @@ def load_info(view: RollPage1LayoutView, characterdata):
 	info["Attribute Info"] = ""
 	info["Attribute"] = 0
 	info["Ability Info"] = ""
-	info["Ability"] = 0
+	info["Ability"] = int(0)
 
 	info["Path of Enlightenment Info"] = characterdata["path_of_enlightenment"]
 	info["Path of Enlightenment"] = int(characterdata["path_rating"])
@@ -3400,6 +3514,10 @@ def load_info(view: RollPage1LayoutView, characterdata):
 				value_str = option.value
 				info["Ability Info"] = value_str.split(':')[1]
 				info["Ability"] = int(value_str.split(':')[3])
+		elif input.id == forminputIDs["PotenceButton"]:
+			info["Potence OnOff"] = input.accessory.label
+		elif input.id == forminputIDs["FortitudeButton"]:
+			info["Fortitude OnOff"] = input.accessory.label
 
 
 	info["blood"] = {}
