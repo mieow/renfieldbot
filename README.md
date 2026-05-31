@@ -106,3 +106,7 @@ https://boto3.amazonaws.com/v1/documentation/api/latest/guide/quickstart.html
 https://docs.aws.amazon.com/polly/latest/dg/API_SynthesizeSpeech.html
 https://docs.python.org/3/library/tempfile.html
 
+## Use of github copilot
+
+I've used copilot for tasks such as creating sort functions, improving logging, giving me a head-start on areas I have less expertise in (e.g. node.js), and some code reviews.
+
