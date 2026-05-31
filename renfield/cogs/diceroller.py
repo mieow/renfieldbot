@@ -2230,8 +2230,13 @@ class RollSelectionButton(discord.ui.Button):
 				else:
 					spec = False
 
+
 				text = "Effective " + info["Attribute Info"]
-				dicepool = info[text] + info["Ability"] + info["Wound Penalty"]
+				if text in info:
+					dicepool = info[text]
+				else:
+					dicepool = info["Attribute"]
+				dicepool += info["Ability"] + info["Wound Penalty"]
 
 				if info["Potence OnOff"] == "On":
 					dicepool += info["Potence"]
@@ -2242,7 +2247,10 @@ class RollSelectionButton(discord.ui.Button):
 
 				result = roll_pool(dicepool, info["Difficulty"],spec, info["Willpower OnOff"])
 				
-				pool = "{} {}".format(info[text], info["Attribute Info"])
+				if text in info:
+					pool = "{} {}".format(info[text], info["Attribute Info"])
+				else:
+					pool = "{} {}".format(info["Attribute"], info["Attribute Info"])
 				if info["Ability Info"] != None and info["Ability Info"] != "":
 					pool = pool + " + {} {}".format(info["Ability"], info["Ability Info"])
 				if info["Attribute Info"] == "Dexterity" and info["Effective Celerity"] > 0:
