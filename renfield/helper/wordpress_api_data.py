@@ -1,6 +1,6 @@
 import discord
 from discord import ui
-from .logger import log
+from .logger import logger
 from renfield_sql import get_bot_setting, save_link, get_link, add_member
 import urllib
 import pycurl
@@ -19,7 +19,7 @@ class WordpressModal(ui.Modal, title="WordPress Linking\n(Do /link-help For Help
 		self.user = user
 
 	async def on_submit(self, ctx: discord.Interaction):
-		log.info(f'Username from user: {self.user.name} - {self.username}')
+		logger.info(f'Username from user: {self.user.name} - {self.username}')
 		await ctx.response.defer()
 
 		# Attempt to connect to WordPress
