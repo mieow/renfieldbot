@@ -15,6 +15,7 @@ from discord import app_commands
 from common import write_key
 from datetime import datetime, date
 from renfield_sql import get_bot_setting, save_bot_setting, get_log_channel
+from helper.logger import logger
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -87,19 +88,19 @@ bot = commands.Bot(
 # Connect to Discord when ready
 @bot.event
 async def on_ready():
-	logging.info('---------------------------------------------')
-	logging.info('Bot User ID: {}'.format(bot.user.id))
-	logging.info('Bot User Name: ' + bot.user.name)
-	logging.info('Running with discord.py version: ' + discord.__version__)
+	logger.info('---------------------------------------------')
+	logger.info('Bot User ID: {}'.format(bot.user.id))
+	logger.info('Bot User Name: ' + bot.user.name)
+	logger.info('Running with discord.py version: ' + discord.__version__)
 	# create encryption key, if needed
-	logging.info('Encryption Key Generation: ' + write_key())
-	logging.info('---------------------------------------------')
-	logging.info('Environment:')
+	logger.info('Encryption Key Generation: ' + write_key())
+	logger.info('---------------------------------------------')
+	logger.info('Environment:')
 	config = dotenv_values("/home/renfield/discord/.env")
 	for env in config:
-		logging.info("    " + env + " : " + os.getenv(env))
-	logging.info('---------------------------------------------')
-	logging.info('Renfield is at your service!')
+		logger.info("    " + env + " : " + os.getenv(env))
+	logger.info('---------------------------------------------')
+	logger.info('Renfield is at your service!')
 	#await bot.tree.sync()
 
 # Ping the bot
@@ -125,7 +126,7 @@ async def hello(ctx: discord.Interaction):
 			current = 0
 			save_bot_setting("current_words", current, "None")
 		
-		logging.info("Getting database information")
+		logger.info("Getting database information")
 		wordpress_site = get_bot_setting("wordpress_site", server)
 		voice = get_bot_setting("polly_voice", server)
 		limit = int(os.getenv('POLLY_WORD_LIMIT'))
@@ -135,7 +136,7 @@ async def hello(ctx: discord.Interaction):
 		message = message + 'Name of Storyteller admin role: {}\n'.format(get_bot_setting("admin_role", server))
 		message = message + 'Wordpress site: {}\n\n'.format(wordpress_site)
 
-		logging.info("Attempting to connect to wordpressAPI")
+		logger.info("Attempting to connect to wordpressAPI")
 		if wordpress_site or wordpress_site != "none":
 			if cogs.wordpress_api.curl_checkAPI(server):
 				message = message + "I have failed to connect to the {} Wordpress site".format(wordpress_site)
@@ -143,9 +144,9 @@ async def hello(ctx: discord.Interaction):
 				message = message + "I have successfully connected to the Wordpress site. Users can link their characters to their Discord account by using the /link command.\n\n"
 	except Exception as e:
 		message = "Error Occurred"
-		logging.error(e)
+		logger.error(e)
 
-	logging.info(f'Sending Message: {message}')
+	logger.info(f'Sending Message: {message}')
 	await ctx.followup.send(message)
 
 @bot.tree.command(name='debug', description='Toggle debug mode')
@@ -154,7 +155,7 @@ async def debug(ctx: discord.Interaction):
 	logger = logging.getLogger('discord')
 	try:
 		if logging.DEBUG == logger.level:
-			logger.setLevel(logging.DEBUG)
+			logger.setLevel(logging.INFO)
 			await ctx.response.send_message('Debug off')
 		else:
 			logger.setLevel(logging.DEBUG)
@@ -166,7 +167,7 @@ async def debug(ctx: discord.Interaction):
 @bot.tree.command(name='sync', description='Sync new/updated commands to global')
 @commands.is_owner()
 async def sync(interaction: discord.Interaction):
-    logging.info("Sync command invoked")
+    logger.info("Sync command invoked")
     await interaction.response.defer()
 
     try:
@@ -174,13 +175,13 @@ async def sync(interaction: discord.Interaction):
 
         # Build a list of synced commands
         mylist = [c.name for c in synced]
-        logging.info(f"Synced {len(synced)} command(s) : {mylist}")
+        logger.info(f"Synced {len(synced)} command(s) : {mylist}")
 
         await interaction.followup.send(
             f"Sync of {len(synced)} command(s) complete: {', '.join(mylist)}"
         )
     except Exception as e:
-        logging.error(f"Error during sync: {e}")
+        logger.error(f"Error during sync: {e}")
         await interaction.followup.send("An error occurred while syncing commands. Please check logs.")
 
 
@@ -246,19 +247,13 @@ async def main():
 		await bot.start(TOKEN)
 
 if __name__ == '__main__':
-   # Configure the logging
-    logging.basicConfig(
-        level=logging.INFO,  # Set the logging level
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Format for log messages
-        datefmt='%Y-%m-%d %H:%M:%S'  # Format for timestamps
-    )
     try:
         asyncio.run(main())
     except Exception as e:
-        logging.error('Renfield is not waking up')
-        logging.error(e)
+        logger.error('Renfield is not waking up')
+        logger.error(e)
     finally:
-        logging.info('Renfield has gone back to bed')
+        logger.info('Renfield has gone back to bed')
 		
 #-------------------------------
 

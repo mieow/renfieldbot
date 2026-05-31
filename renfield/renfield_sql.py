@@ -6,6 +6,7 @@ import os
 from dotenv import load_dotenv
 from common import str_encode, str_decode
 from discord import app_commands
+from helper.logger import logger
 
 load_dotenv()
 DATABASE_USERNAME = os.getenv('DATABASE_USERNAME')
@@ -137,7 +138,7 @@ class renfield_sql():
 			else:
 				return None
 		except mariadb.Error as e:
-			logging.error(f"Database error in get_nameid_from_wordpress_id: {str(e)}")
+			logger.error(f"Database error in get_nameid_from_wordpress_id: {str(e)}")
 			return None
 
 
@@ -277,8 +278,8 @@ def save_link(nameid, wordpress_id, server, token, secret, status):
 		count = countall[0][0]
 	except Exception as e:
 		ok = 0
-		logging.error('check existing wp_link failed')
-		logging.error(e)
+		logger.error('check existing wp_link failed')
+		logger.error(e)
 	
 	if not ok:
 		return 0
@@ -290,11 +291,11 @@ def save_link(nameid, wordpress_id, server, token, secret, status):
 			val = (server, nameid, wordpress_id, token, secret, status)
 			mycursor.execute(sql, val)
 			mydb.commit()
-			logging.info('New wp_link record created for user {} on server {}'.format(nameid, server))
+			logger.info('New wp_link record created for user {} on server {}'.format(nameid, server))
 		except Exception as e:
 			ok = 0
-			logging.error('insert to wp_link failed')
-			logging.error(e)
+			logger.error('insert to wp_link failed')
+			logger.error(e)
 			print(e)
 	
 	else:
@@ -304,11 +305,11 @@ def save_link(nameid, wordpress_id, server, token, secret, status):
 			val = (wordpress_id, token, secret, status, nameid, server)
 			mycursor.execute(sql, val)
 			mydb.commit()
-			logging.info('wp_link record updated for user {} on server {}'.format(nameid, server))
+			logger.info('wp_link record updated for user {} on server {}'.format(nameid, server))
 		except Exception as e:
 			ok = 0
-			logging.error('update to wp_link failed')
-			logging.error(e)
+			logger.error('update to wp_link failed')
+			logger.error(e)
 
 	mydb.disconnect()
 	return ok

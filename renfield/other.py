@@ -2,6 +2,8 @@
 # This file contains functions that have been removed from the bot, to potentially be put back, but not 100% guaranteed
 #
 
+from helper.logger import logger
+
 
 
 # discord.on_voice_state_update(member, before, after)
@@ -16,7 +18,7 @@ async def on_voice_state_update(member, before, after):
 	try:
 		log_voice_channel = get_bot_setting("voice-activity", server.name)
 	except Exception as e:
-		log.error(e)
+		logger.error(e)
 	
 	aftername = ""
 	beforename = ""

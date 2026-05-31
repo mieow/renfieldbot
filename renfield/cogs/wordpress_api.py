@@ -13,6 +13,7 @@ from renfield_sql import renfield_sql, get_bot_setting, get_log_channel, save_bo
 from discord import Embed, app_commands
 from dotenv import load_dotenv
 import pycurl
+from helper.logger import logger
 import certifi
 from io import BytesIO
 import json
@@ -38,34 +39,34 @@ class WordPressAPI(commands.Cog):
 		# Check if the message was sent via webhook
 		if message.webhook_id is not None:
 			# This message was sent through a webhook
-			logging.info(f"Webhook message detected from webhook {message.webhook_id} in channel {message.channel.id}: {message.content}")
+			logger.info(f"Webhook message detected from webhook {message.webhook_id} in channel {message.channel.id}: {message.content}")
 			
 			mywebhookid = self.bot.application_id
 			if str(mywebhookid) == str(message.webhook_id):
-				logging.info("I sent the message - skipping")
+				logger.info("I sent the message - skipping")
 				return
 
 			# get the channel object from the channel id
 			channel = get(self.bot.get_all_channels(), id=message.channel.id)
-			logging.info(f"Retrieved channel object for channel ID {message.channel.id}: {channel}")
+			logger.info(f"Retrieved channel object for channel ID {message.channel.id}: {channel}")
 			# get the guild from the channel
 			server = channel.guild if channel else None
-			logging.info(f"Retrieved server from channel: {server.name if server else 'None'}")
+			logger.info(f"Retrieved server from channel: {server.name if server else 'None'}")
 			# list all the webhooks for the server and see if any of them match the webhook ID of the message
 			webhooks = await server.webhooks() if server else []
 			harkerwebhook = get_bot_setting("harker-webhook", server.name) if server else None
 			if not harkerwebhook:
-				logging.warning(f"Harker webhook URL not found in bot settings for server {server.name if server else 'None'}. Webhook message processing may not work as expected.")
+				logger.warning(f"Harker webhook URL not found in bot settings for server {server.name if server else 'None'}. Webhook message processing may not work as expected.")
 				return
 			else:
-				logging.info(f"Harker webhook is {harkerwebhook}")
+				logger.info(f"Harker webhook is {harkerwebhook}")
 
-			logging.info(f"Retrieved {len(webhooks)} webhooks for server {server.name if server else 'None'}")
+			logger.info(f"Retrieved {len(webhooks)} webhooks for server {server.name if server else 'None'}")
 			for webhook in webhooks:
-				logging.info(f"Checking webhook {webhook.id} with name {webhook.name} against message webhook ID {message.webhook_id}")
+				logger.info(f"Checking webhook {webhook.id} with name {webhook.name} against message webhook ID {message.webhook_id}")
 
 				if str(webhook.id) == str(message.webhook_id):
-					logging.info(f"Message was sent by webhook: {webhook.name} (ID: {webhook.id}) - URL: {webhook.url}")
+					logger.info(f"Message was sent by webhook: {webhook.name} (ID: {webhook.id}) - URL: {webhook.url}")
 					if harkerwebhook and str(webhook.url) == str(harkerwebhook):
 						await self.process_harker_message(message)
 
@@ -84,7 +85,7 @@ class WordPressAPI(commands.Cog):
 			author = message.author.display_name if message.author else "Unknown"
 			channel = message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id)
 			
-			logging.info(f"Processing webhook message from {author} in {channel}: {content}")
+			logger.info(f"Processing webhook message from {author} in {channel}: {content}")
 			
 			# Authentication successful
 			# Wordpress username: Leonardo
@@ -94,10 +95,10 @@ class WordPressAPI(commands.Cog):
 				if guildobj:
 					server = guildobj.name if guildobj else "Unknown"
 				else:
-					logging.warning("Could not retrieve guild information from message.")
+					logger.warning("Could not retrieve guild information from message.")
 					return
 
-				logging.info("Received authentication success message from Harker webhook.")
+				logger.info("Received authentication success message from Harker webhook.")
 				# split the content into lines and extract the Wordpress username and Database ID
 				lines = content.splitlines()
 				wp_username = None
@@ -108,30 +109,30 @@ class WordPressAPI(commands.Cog):
 					elif "Database ID:" in line:
 						db_id = line.split("Database ID:")[1].strip()
 				if wp_username and db_id:
-					logging.info(f"Extracted Wordpress username: {wp_username}, Database ID: {db_id} from webhook message.")
+					logger.info(f"Extracted Wordpress username: {wp_username}, Database ID: {db_id} from webhook message.")
 				else:
-					logging.warning("Failed to extract Wordpress username and Database ID from webhook message. Check the message format.")
-					logging.debug(f"Webhook message content: {content}")
+					logger.warning("Failed to extract Wordpress username and Database ID from webhook message. Check the message format.")
+					logger.debug(f"Webhook message content: {content}")
 					return
 				
 				db = renfield_sql()
 				nameid = db.get_nameid_from_wordpress_id(wp_username, server)
 				if not nameid:
-					logging.warning(f"No nameid found in database for Wordpress username {wp_username} in server {message.guild.name}.")
+					logger.warning(f"No nameid found in database for Wordpress username {wp_username} in server {message.guild.name}.")
 					return
 				logchannel = get_log_channel(message.guild)
 				if not logchannel:
-					logging.warning(f"No log channel found for server {server}. Cannot send messages about webhook processing.")
+					logger.warning(f"No log channel found for server {server}. Cannot send messages about webhook processing.")
 					return
 				
 				# get discord user object from nameid
 				user_global = self.bot.get_user(int(nameid))
 				if not user_global:
-					logging.warning(f"Could not find Discord user with nameid {nameid} for server {server}.")
+					logger.warning(f"Could not find Discord user with nameid {nameid} for server {server}.")
 					return
 				mutual_guilds = user_global.mutual_guilds
 				if not any(guild.id == message.guild.id for guild in mutual_guilds):
-					logging.warning(f"User {user_global} with nameid {nameid} is not in the same server as the webhook message. Cannot proceed with server member role configuration.")
+					logger.warning(f"User {user_global} with nameid {nameid} is not in the same server as the webhook message. Cannot proceed with server member role configuration.")
 					return
 				user = message.guild.get_member(user_global.id)
 
@@ -148,32 +149,32 @@ class WordPressAPI(commands.Cog):
 					else:
 						await logchannel.send('I\'m sorry Master, I recieved this error message when I tried to connect: {}'.format(wpinfo))
 				else:
-					logging.info(f"Successfully retrieved user information from Wordpress API")
+					logger.info(f"Successfully retrieved user information from Wordpress API")
 
 					if user.guild_permissions.administrator:
-						logging.info(f"User {user} is an administrator on the server. Skipping role configuration.")
+						logger.info(f"User {user} is an administrator on the server. Skipping role configuration.")
 						await logchannel.send(f"Account linked for {user.display_name}, but I have not changed their roles because they are an administrator on this server.")
 						return
 					
-					logging.info("Adding user to accepted role if it exists")
+					logger.info("Adding user to accepted role if it exists")
 					accepted_role = get_bot_setting("accepted_role", server, None)
 					if accepted_role:
 						role = get(message.guild.roles, name=accepted_role)
 						if role:
 							await user.add_roles(role)
-							logging.info(f"Added accepted role {accepted_role} to user {user}.")
+							logger.info(f"Added accepted role {accepted_role} to user {user}.")
 						else:
-							logging.warning(f"Accepted role {accepted_role} not found on server {server}. Cannot add role to user.")
+							logger.warning(f"Accepted role {accepted_role} not found on server {server}. Cannot add role to user.")
 
 					# add to any server roles that match their WP account role names
 					addroles = []
 					wproles = wpinfo["roles"]
 					for wprole in wproles:
-						logging.info(f"Checking if Wordpress role {wprole} matches any Discord roles on the server.")
+						logger.info(f"Checking if Wordpress role {wprole} matches any Discord roles on the server.")
 						for r in message.guild.roles:
-							logging.info(f"Comparing Wordpress role {wprole.upper()} to Discord role {r.name.upper()}")
+							logger.info(f"Comparing Wordpress role {wprole.upper()} to Discord role {r.name.upper()}")
 							if wprole.upper() == r.name.upper():
-								logging.info(f"Match found for Wordpress role {wprole} and Discord role {r.name}. Adding role to user.")
+								logger.info(f"Match found for Wordpress role {wprole} and Discord role {r.name}. Adding role to user.")
 								member = user
 								role = get(member.guild.roles, name=r.name)
 								await member.add_roles(role)
@@ -203,7 +204,7 @@ class WordPressAPI(commands.Cog):
 							msg += "You have also been added to the accepted role '{}'.".format(accepted_role)+". " 
 					if extraroles:
 						msg += "You are also a member of the following Wordpress roles which might need to be removed: {}".format(', '.join(extraroles) + ".")
-					logging.info("Reviewed roles." + msg)
+					logger.info("Reviewed roles." + msg)
 					if msg:
 						await logchannel.send(msg)
 
@@ -248,7 +249,7 @@ class WordPressAPI(commands.Cog):
 			# - Trigger automated responses
 			
 		except Exception as e:
-			logging.error(f"Error processing webhook message: {str(e)}")
+			logger.error(f"Error processing webhook message: {str(e)}")
 		
 	async def cog_app_command_error(self, ctx, error):
 		if isinstance(error, discord.app_commands.CheckFailure):
@@ -285,12 +286,12 @@ class WordPressAPI(commands.Cog):
 				auth_methods = api_json['authentication']
 				if 'application-passwords' in auth_methods:
 					method = 'application-passwords'
-					logging.info(f"Application Password authentication is supported by the Wordpress site.")
+					logger.info(f"Application Password authentication is supported by the Wordpress site.")
 					authorize_url = api_json['authentication']['application-passwords']['endpoints']['authorization']
 
 				if 'oauth1' in auth_methods:
 					method = 'oauth1'
-					logging.info(f"OAuth1 authentication is supported by the Wordpress site.")
+					logger.info(f"OAuth1 authentication is supported by the Wordpress site.")
 					request_url = api_json['authentication']['oauth1']['request']
 					authorize_url = api_json['authentication']['oauth1']['authorize']
 					access_url = api_json['authentication']['oauth1']['access']
@@ -298,11 +299,11 @@ class WordPressAPI(commands.Cog):
 					# save access_url to bot settings so that harker can use it to exchange the request token for an access token after the user authorizes the app
 					save_bot_setting("oauth_access_url", access_url, server)
 				else:
-					logging.warning(f"Could not determine supported authentication methods from API response.")
+					logger.warning(f"Could not determine supported authentication methods from API response.")
 					await ctx.response.send_message(f"I'm sorry Master, I was able to reach the Wordpress API endpoint at {api_endpoint}, but I could not determine the supported authentication methods from the response. Please check that the API is working correctly and supports either Application Passwords or OAuth1 authentication.")
 					return
 			else:
-				logging.warning(f"No authentication information found in API response.")
+				logger.warning(f"No authentication information found in API response.")
 				await ctx.response.send_message(f"I'm sorry Master, I was able to reach the Wordpress API endpoint at {api_endpoint}, but it did not contain information about supported authentication methods. Please check that the API is working correctly and supports either Application Passwords or OAuth1 authentication.")
 				return
 
@@ -313,20 +314,20 @@ class WordPressAPI(commands.Cog):
 				wpns = None
 				for ns in namespaces:
 					if ns == 'vampire-character/v1':
-						logging.info("Custom namespace for vampire character plugin is available. Proceeding with linking.")
+						logger.info("Custom namespace for vampire character plugin is available. Proceeding with linking.")
 						save_bot_setting("character_api_namespace", ns, server)
 						vampirens = ns
 					if 'wp/v2' in ns:
-						logging.info("Default Wordpress API namespace is available: {}".format(ns))
+						logger.info("Default Wordpress API namespace is available: {}".format(ns))
 						save_bot_setting("wordpress_users_namespace", ns, server)
 						wpns = ns
 
 				if vampirens is None:
-					logging.warning("No Vampire API namespaces found in API response. Linking may fail.")
+					logger.warning("No Vampire API namespaces found in API response. Linking may fail.")
 					await ctx.response.send_message(f"I'm sorry Master, I couldn't find the Vampire Character API namespace I need. Please check that the vampire character plugin is installed and active on the Wordpress site.")
 					return
 				if wpns is None:
-					logging.warning("No Wordpress Users API namespaces found in API response. Linking may fail.")
+					logger.warning("No Wordpress Users API namespaces found in API response. Linking may fail.")
 					await ctx.response.send_message(f"I'm sorry Master, I couldn't find the Wordpress Users API namespace I need. Please check that the Wordpress users endpoint is available on the site.")
 					return
 				
@@ -334,7 +335,7 @@ class WordPressAPI(commands.Cog):
 				routes = api_json['routes']
 				for route in routes:
 					if wpns in route and 'users/me' in route:
-						logging.info("Found API route for getting wordpress user information: {}".format(route))
+						logger.info("Found API route for getting wordpress user information: {}".format(route))
 						# contatenate with API endpoint and save to bot settings so that harker can use it to get the user's wordpress username after they authorize the app
 						url = api_endpoint + route
 						# remove any double slashes from the url
@@ -343,7 +344,7 @@ class WordPressAPI(commands.Cog):
 						save_bot_setting("wordpress_users_api_route", url, server)
 						break
 			else:
-				logging.warning("No namespaces information found in API response. Linking may fail.")
+				logger.warning("No namespaces information found in API response. Linking may fail.")
 				await ctx.response.send_message(f"I'm sorry Master, I I could not fine the API namespaces in the response from the Wordpress API endpoint. Please check that the API is working correctly and that the vampire character plugin is installed and active on the Wordpress site.")
 				return
 
@@ -360,13 +361,13 @@ class WordPressAPI(commands.Cog):
 				except Exception as e:
 					print(f"An error occurred while initiating OAuth1 flow: {str(e)}")
 
-				logging.info(f"Received response from OAuth1 request token endpoint with status code {response.status_code}")
+				logger.info(f"Received response from OAuth1 request token endpoint with status code {response.status_code}")
 				if response.status_code == 200:
 					credentials = parse_qs(response.content)
 					# print the credentials for debugging
-					logging.debug(f"Received OAuth1 request token response: {credentials}")
+					logger.debug(f"Received OAuth1 request token response: {credentials}")
 					for key, value in credentials.items():
-						logging.debug(f"{key}: {value[0]}")
+						logger.debug(f"{key}: {value[0]}")
 
 					if b'oauth_token' in credentials and b'oauth_token_secret' in credentials:
 
@@ -375,8 +376,8 @@ class WordPressAPI(commands.Cog):
 						# convert from binary to string
 						oauth_token = oauth_token_binary.decode('utf-8')
 						oauth_token_secret = oauth_token_secret_binary.decode('utf-8')
-						logging.debug(f"Received request token: {oauth_token}")
-						logging.debug(f"Received request token secret: {oauth_token_secret}")
+						logger.debug(f"Received request token: {oauth_token}")
+						logger.debug(f"Received request token secret: {oauth_token_secret}")
 
 						user_auth_url = f"{authorize_url}?oauth_token={oauth_token}"
 						user_auth_url += f"&oauth_token_secret={oauth_token_secret}"
@@ -384,16 +385,16 @@ class WordPressAPI(commands.Cog):
 						# Save the request token and secret in the database linked to the user and server, so we can verify it when they come back from authorizing the app
 						status = save_link(nameid, "[placeholder]", server, oauth_token, oauth_token_secret, "pending")
 						if not status:
-							logging.error("Failed to save OAuth1 request token and secret to the database.")
+							logger.error("Failed to save OAuth1 request token and secret to the database.")
 							await ctx.response.send_message(f"I'm sorry Master, I failed to save the OAuth1 request token. Please try again.")
 							return
 						await ctx.response.send_message(f"To link your account, please visit the following URL to authorize the application: {user_auth_url}", ephemeral=True)
 					else:
-						logging.error(f"OAuth1 request token response did not contain expected parameters. Response content: {response.content}")
+						logger.error(f"OAuth1 request token response did not contain expected parameters. Response content: {response.content}")
 						await ctx.response.send_message(f"I'm sorry Master, I failed to initiate the OAuth1 authentication flow. The response from the Wordpress site did not contain the expected parameters. Please check that the API is working correctly and supports OAuth1 authentication.")
 						return
 				else:
-					logging.error(f"Failed to initiate OAuth1 flow with status code {response.status_code}: {response.text}")
+					logger.error(f"Failed to initiate OAuth1 flow with status code {response.status_code}: {response.text}")
 					await ctx.response.send_message(f"I'm sorry Master, I failed to initiate the OAuth1 authentication flow. The response from the Wordpress site did not contain the expected parameters. Please check that the API is working correctly and supports OAuth1 authentication.")
 					return
 
@@ -473,12 +474,12 @@ def get_wordpress_api_endpoint(server):
 		try:
 			response = requests.head(wordpress_site, timeout=5)
 			if response.status_code >= 400:
-				logging.error(f"Failed to reach Wordpress site at {wordpress_site}. Status code: {response.status_code}")
+				logger.error(f"Failed to reach Wordpress site at {wordpress_site}. Status code: {response.status_code}")
 				return None
 		except requests.RequestException as e:
-			logging.error(f"Failed to reach Wordpress site at {wordpress_site}. Error: {str(e)}")
+			logger.error(f"Failed to reach Wordpress site at {wordpress_site}. Error: {str(e)}")
 			return None
-		logging.info(f"Successfully reached Wordpress site at {wordpress_site}. Status code: {response.status_code}")
+		logger.info(f"Successfully reached Wordpress site at {wordpress_site}. Status code: {response.status_code}")
 		# Get the API endpoint from the response headers (if available) or assume it's at /wp-json/
 		header_link = response.headers.get('Link', f"{wordpress_site}/wp-json/")
 		api_endpoint = None
@@ -496,27 +497,27 @@ def get_wordpress_api_endpoint(server):
 					break
 		if not api_endpoint:
 			api_endpoint = f"{wordpress_site}/wp-json/"
-			logging.info("API endpoint not found in headers, defaulting to: {}".format(api_endpoint))
+			logger.info("API endpoint not found in headers, defaulting to: {}".format(api_endpoint))
 			return api_endpoint
 		
-		logging.info(f"Using API endpoint: {api_endpoint}")
+		logger.info(f"Using API endpoint: {api_endpoint}")
 		save_bot_setting("wordpress_api_endpoint", api_endpoint, server)
 
 		# Check response from API endpoint
 		try:
 			api_response = requests.get(api_endpoint, timeout=5)
 			if api_response.status_code >= 400:
-				logging.error(f"Failed to reach Wordpress API endpoint at {api_endpoint}. Status code: {api_response.status_code}")
+				logger.error(f"Failed to reach Wordpress API endpoint at {api_endpoint}. Status code: {api_response.status_code}")
 				return None
 		except requests.RequestException as e:
-			logging.error(f"Failed to reach Wordpress API endpoint at {api_endpoint}. Error: {str(e)}")
+			logger.error(f"Failed to reach Wordpress API endpoint at {api_endpoint}. Error: {str(e)}")
 			return None
 
-		logging.info(f"Successfully reached Wordpress API endpoint at {api_endpoint}. Status code: {api_response.status_code}")
+		logger.info(f"Successfully reached Wordpress API endpoint at {api_endpoint}. Status code: {api_response.status_code}")
 		try:
 			api_json = api_response.json()
 		except json.JSONDecodeError:
-			logging.warning("No JSON body in response.")
+			logger.warning("No JSON body in response.")
 			return None
 
 		return api_json
@@ -524,7 +525,7 @@ def get_wordpress_api_endpoint(server):
 # Check Wordpress API connection
 def curl_checkAPI(server):
 	wpjson = get_wordpress_api_endpoint(server)
-	logging.info(f"Checking Wordpress API connection for server {server}. API JSON: {wpjson}")
+	logger.info(f"Checking Wordpress API connection for server {server}. API JSON: {wpjson}")
 	if wpjson is None:
 		return True
 	return False
@@ -566,7 +567,7 @@ def curl_get(endpoint, server, nameid: str=""):
     
 	apiurl = "{}{}".format(wordpress_api_endpoint, endpoint)
 
-	logging.info(f"Making authenticated request to Wordpress API at {apiurl} with OAuth1 authentication for user {wordpress_id}")
+	logger.info(f"Making authenticated request to Wordpress API at {apiurl} with OAuth1 authentication for user {wordpress_id}")
 
 	try:
 		response = requests.get(apiurl, auth=auth)
@@ -593,9 +594,9 @@ def curl_get(endpoint, server, nameid: str=""):
 		result["error"] = str(e)
 
 	if "code" in result:
-		logging.error(f"Error response from Wordpress API: {result['code']} - {result.get('error', 'No error message provided')}")
+		logger.error(f"Error response from Wordpress API: {result['code']} - {result.get('error', 'No error message provided')}")
 	else:    
-		logging.debug(f"Success response from Wordpress API: {result}")
+		logger.debug(f"Success response from Wordpress API: {result}")
 	return result
 
 
@@ -625,7 +626,7 @@ async def curl_get_async(endpoint, server, nameid: str=""):
 	auth = OAuth1(client_key=consumer_key, client_secret=consumer_secret, resource_owner_key=token, resource_owner_secret=secret)
 	apiurl = "{}{}".format(wordpress_api_endpoint, endpoint)
 
-	logging.info(f"Making authenticated async request to Wordpress API at {apiurl} for user {wordpress_id}")
+	logger.info(f"Making authenticated async request to Wordpress API at {apiurl} for user {wordpress_id}")
 
 	try:
 		response = await asyncio.to_thread(requests.get, apiurl, auth=auth)
@@ -644,9 +645,9 @@ async def curl_get_async(endpoint, server, nameid: str=""):
 		result = {"code": "request_failed", "error": str(e)}
 
 	if "code" in result:
-		logging.error(f"Error response from Wordpress API: {result['code']} - {result.get('error', 'No error message provided')}")
+		logger.error(f"Error response from Wordpress API: {result['code']} - {result.get('error', 'No error message provided')}")
 	else:
-		logging.debug(f"Success response from Wordpress API: {result}")
+		logger.debug(f"Success response from Wordpress API: {result}")
 	return result
 
 # Get info on wordpress user
@@ -723,7 +724,7 @@ async def get_active_characters(server: str, nameid: str):
 		characterlist["message"] = "This server is not linked to a Wordpress site"
 		return characterlist
     
-	logging.info("Getting list of active characters.")
+	logger.info("Getting list of active characters.")
 	uri = "vampire-character/v1/character/"
 	result = await curl_get_async(uri, server, nameid)
 	if "code" in result:

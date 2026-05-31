@@ -9,6 +9,7 @@ from discord import Embed, app_commands
 from cogs.wordpress_api import get_my_character, get_character, is_storyteller, get_active_characters
 from renfield_sql import check_is_auth, check_restapi_active
 from helper.diceroller_viewer import *
+from helper.logger import logger
 
 forminputIDs = {
 	"CelerityPulldownActionRow": 1,
@@ -2495,16 +2496,16 @@ class RollPage1LayoutView(discord.ui.LayoutView):
 
 
 	async def on_error(self, interaction: discord.Interaction, error: Exception, item=None):
-		logging.error("RollPage1View on_error called for item=%s", item)
-		logging.error("RollPage1View exception", exc_info=(type(error), error, error.__traceback__))
+		logger.error("RollPage1View on_error called for item=%s", item)
+		logger.error("RollPage1View exception", exc_info=(type(error), error, error.__traceback__))
 		try:
 			if interaction.response.is_done():
 				await interaction.followup.send("An error occurred while processing the roll page.")
 			else:
 				await interaction.response.send_message("An error occurred while processing the roll page.")
 		except Exception as send_error:
-			logging.error("Failed to send error response", exc_info=(type(send_error), send_error, send_error.__traceback__))
-		logging.error("Error in RollPage1View: %s", error)
+			logger.error("Failed to send error response", exc_info=(type(send_error), send_error, send_error.__traceback__))
+		logger.error("Error in RollPage1View: %s", error)
 
 
 class DiceRoller(commands.Cog):
@@ -2519,12 +2520,12 @@ class DiceRoller(commands.Cog):
 			else:
 				await ctx.response.send_message("I'm sorry Master, the command failed.")
 		except discord.NotFound:
-			logging.error("Interaction not found when sending app command error response")
+			logger.error("Interaction not found when sending app command error response")
 		except discord.HTTPException as he:
-			logging.error("Failed to send app command error response: %s", he)
+			logger.error("Failed to send app command error response: %s", he)
 		except Exception as send_err:
-			logging.error("Unexpected error while sending app command error response", exc_info=(type(send_err), send_err, send_err.__traceback__))
-		logging.error("App command handler exception", exc_info=(type(error), error, error.__traceback__))
+			logger.error("Unexpected error while sending app command error response", exc_info=(type(send_err), send_err, send_err.__traceback__))
+		logger.error("App command handler exception", exc_info=(type(error), error, error.__traceback__))
 
 
 	@check_restapi_active()
@@ -2537,7 +2538,7 @@ class DiceRoller(commands.Cog):
 		try:
 			isST = await is_storyteller(nameid, server)
 		except Exception as e:
-			logging.error("Failed to determine storyteller status", exc_info=(type(e), e, e.__traceback__))
+			logger.error("Failed to determine storyteller status", exc_info=(type(e), e, e.__traceback__))
 			isST = False
 			
 		charinfo = await get_my_character(nameid, server)
@@ -2545,11 +2546,11 @@ class DiceRoller(commands.Cog):
 			try:
 				await ctx.response.send_message(charinfo["message"])
 			except discord.NotFound:
-				logging.error("Interaction not found when sending rollme failure message")
+				logger.error("Interaction not found when sending rollme failure message")
 			except discord.HTTPException as he:
-				logging.error("Failed to send rollme failure message: %s", he)
+				logger.error("Failed to send rollme failure message: %s", he)
 			except Exception as e:
-				logging.error("Unexpected error sending rollme failure message", exc_info=(type(e), e, e.__traceback__))
+				logger.error("Unexpected error sending rollme failure message", exc_info=(type(e), e, e.__traceback__))
 		else:
 			activecharacters = None
 			if isST:
@@ -2557,11 +2558,11 @@ class DiceRoller(commands.Cog):
 			try:
 				await ctx.response.send_message(view=RollPage1LayoutView(server, nameid, charinfo["result"], isST=isST, activecharacters=activecharacters), ephemeral=True)
 			except discord.NotFound:
-				logging.error("Interaction not found when sending rollme view")
+				logger.error("Interaction not found when sending rollme view")
 			except discord.HTTPException as he:
-				logging.error("Failed to send rollme view: %s", he)
+				logger.error("Failed to send rollme view: %s", he)
 			except Exception as e:
-				logging.error("Unexpected error sending rollme view", exc_info=(type(e), e, e.__traceback__))
+				logger.error("Unexpected error sending rollme view", exc_info=(type(e), e, e.__traceback__))
 
 	
 	async def rollmy_error(self, ctx, error):
@@ -2571,12 +2572,12 @@ class DiceRoller(commands.Cog):
 			else:
 				await ctx.response.send_message("I'm sorry Master, the command failed.")
 		except discord.NotFound:
-			logging.error("Interaction not found when sending rollmy error response")
+			logger.error("Interaction not found when sending rollmy error response")
 		except discord.HTTPException as he:
-			logging.error("Failed to send rollmy error response: %s", he)
+			logger.error("Failed to send rollmy error response: %s", he)
 		except Exception as send_err:
-			logging.error("Unexpected error while sending rollmy error response", exc_info=(type(send_err), send_err, send_err.__traceback__))
-		logging.error("Rollmy command error", exc_info=(type(error), error, error.__traceback__))
+			logger.error("Unexpected error while sending rollmy error response", exc_info=(type(send_err), send_err, send_err.__traceback__))
+		logger.error("Rollmy command error", exc_info=(type(error), error, error.__traceback__))
 
 
 	@app_commands.command(name='rollpool', description='Dice roller')
@@ -2598,7 +2599,7 @@ class DiceRoller(commands.Cog):
 				else:
 					await ctx.response.send_message("Master {}, Your roll for '{}' is a {}. You rolled: ".format(author, note, result["description"]) + formatdice(result["rolls"]))
 			except Exception as e:
-				logging.error("Renfield is confused while rolling dice", exc_info=(type(e), e, e.__traceback__))
+				logger.error("Renfield is confused while rolling dice", exc_info=(type(e), e, e.__traceback__))
 
 
 	# @commands.error
@@ -2611,11 +2612,11 @@ class DiceRoller(commands.Cog):
 			if isinstance(error, commands.MissingRequiredArgument):
 				await ctx.response.send_message("I'm sorry Master, I need more information. Can you tell me the {}".format(error.param.name))
 		except discord.NotFound:
-			logging.error("Interaction not found when sending cog command error response")
+			logger.error("Interaction not found when sending cog command error response")
 		except discord.HTTPException as he:
-			logging.error("Failed to send cog command error response: %s", he)
+			logger.error("Failed to send cog command error response: %s", he)
 		except Exception as send_err:
-			logging.error("Unexpected error while sending cog command error response", exc_info=(type(send_err), send_err, send_err.__traceback__))
+			logger.error("Unexpected error while sending cog command error response", exc_info=(type(send_err), send_err, send_err.__traceback__))
 
 async def setup(bot):
 	await bot.add_cog(DiceRoller(bot))
@@ -3235,9 +3236,9 @@ async def get_char_from_pulldown(view):
 			characterID = str(ch.value)
 			newcharinfo = await get_character(view.server, view.nameid, characterID)
 			if "code" in newcharinfo:
-				logging.info("Failed to obtain character data for {}",format(characterID))
+				logger.info("Failed to obtain character data for {}",format(characterID))
 			else:
-				logging.info("Obtained character data for " + newcharinfo["result"]["name"])
+				logger.info("Obtained character data for " + newcharinfo["result"]["name"])
 				chardata = newcharinfo["result"]
 	return chardata
 
