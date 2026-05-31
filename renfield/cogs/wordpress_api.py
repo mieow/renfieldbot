@@ -183,7 +183,7 @@ class WordPressAPI(commands.Cog):
 					
 
 					extraroles = []
-					for r in message.guild.roles:
+					for r in user.roles:
 						found = False
 						for role in wproles:
 							if r.name.upper() == role.upper():
