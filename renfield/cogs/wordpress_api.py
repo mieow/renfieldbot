@@ -1,5 +1,6 @@
 import logging
 from xmlrpc import server
+import traceback
 
 import discord
 from discord.ext import commands
@@ -227,12 +228,25 @@ class WordPressAPI(commands.Cog):
 								nickname += " (" + firstname + ")"
 							if charinfo["result"]["pronouns"] != "":
 								nickname += " [" + charinfo["result"]["pronouns"] + "]"
+
+							if len(nickname) > 32:
+								nickname = wp_username
+							if charinfo["result"]["player"] != "":
+								firstname = charinfo["result"]["player"].split(' ')[0]
+								nickname += " (" + firstname + ")"
+							if charinfo["result"]["pronouns"] != "":
+								nickname += " [" + charinfo["result"]["pronouns"] + "]"
+
+							if len(nickname) > 32:
+								nickname = charinfo["result"]["display_name"]
+					
 							try:
 								await user.edit(nick=nickname)
 								await logchannel.send('Thank you {}. I have connected to your wordpress account. Your Discord server nickname has been set to {}.'.format(charinfo["result"]["display_name"], nickname))
 							except Exception as e:
-								print(e)
-								await logchannel.send('Failed to set nickname. Check that the bot has permission to manage nicknames.')
+								logger.error("Failed to set nickname", exc_info=True)
+								traceback.print_exc()
+								await logchannel.send('Failed to set nickname.')
 						else:
 							await logchannel.send('Character has been linked, but I don\'t have permission on this server to set your nickname.')
 
@@ -256,7 +270,8 @@ class WordPressAPI(commands.Cog):
 			await ctx.response.send_message("I'm sorry Master. {}".format(error))
 		else:
 			await ctx.response.send_message("I'm sorry Master, the command failed.")
-			print(error)
+			logger.error("Cog app command error", exc_info=True)
+			traceback.print_exc()
 		
 	@check_restapi_active()
 	@app_commands.command(name="link", description="Link Discord Account to Wordpress Account")
