@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from .logger import log
+from .logger import logger
 
 class AttributeSelectionView(discord.ui.View):
     def __init__(self):
@@ -32,7 +32,7 @@ class AttributeSelectionView(discord.ui.View):
     )
     async def dropdown_callback(self, interaction: discord.Interaction, select: discord.ui.Select, ):
         self.selected_attributes = select.values
-        log.info(self.selected_attributes)
+        logger.info(self.selected_attributes)
         await interaction.response.send_message(
             f"You selected: {', '.join(self.selected_attributes)}", ephemeral=True
         )
