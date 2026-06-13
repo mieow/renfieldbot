@@ -569,7 +569,7 @@ class RollAttributeDropdown(discord.ui.Select):
 			if addcelerity:
 				self.view.celerityar = discord.ui.ActionRow(id=forminputIDs["CelerityPulldownActionRow"])
 				self.view.celerityar.add_item(RollAddCelerityDropdown(self.view, celerity=self.info["Celerity"]))
-				self.view.textcel = discord.ui.TextDisplay("Choose how much of your Celerity is being used for Dexterity (Total - number of extra rounds)")
+				self.view.textcel = discord.ui.TextDisplay("Choose how much Celerity is being used for actions (Total to roll = Celerity - number of extra rounds)")
 				self.view.container1.add_item(self.view.textcel)
 				self.view.container1.add_item(self.view.celerityar)
 
@@ -1158,7 +1158,9 @@ class RollWoundDropdown(discord.ui.Select):
 
 
 class RollDmgTypeDropdown(discord.ui.Select):
-	def __init__(self, view: 'RollPage1LayoutView'):
+	def __init__(self, view: 'RollPage1LayoutView', fortitude: int):
+		self.fortitude = fortitude
+		self.oldtext = view.texthelp.content
 
 		optionlist = [
 			"Bashing",
@@ -1183,6 +1185,12 @@ class RollDmgTypeDropdown(discord.ui.Select):
 		selectedvalue = self.values[0]
 		for opt in self.options:
 			opt.default = False
+
+		if selectedvalue == "Aggravated" and self.fortitude == 0:
+			self.oldtext = self.view.texthelp.content
+			self.view.texthelp.content = "Fortitude is needed to soak Aggravated damage"
+		else:
+			self.view.texthelp.content = self.oldtext
 			
 		discord.utils.get(self.options, value=selectedvalue).default = True
 		# Use the interaction object to send a response message containing
@@ -1194,29 +1202,30 @@ class RollDmgTypeDropdown(discord.ui.Select):
 class RollFrenzyDiffDropdown(discord.ui.Select):
 	def __init__(self, view: 'RollPage1LayoutView', default: int, clan: str):
 
+		if clan == "Brujah":
+			offset = int(2)
+		else:
+			offset = int(0)
+
 		diffoptions = {
-			"Smell of blood when hungry": "bloodsmell:3",
-			"Sight of blood when hungry" : "bloodsight:4",
-			"Being harassed": "harassed:4",
-			"Life-threatening situation": "threat:4",
-			"Malicious taunts": "taunts:4",
-			"Physical Provocation": "provocation:6",
-			"Taste of blood when hungry": "bloodtaste:6",
-			"Loved one in danger": "lovedanger:7",
-			"Outright public humiliation": "humiliation:8"
+			"Smell of blood when hungry": "bloodsmell:{}".format(int(3)+offset),
+			"Sight of blood when hungry" : "bloodsight:{}".format(int(4)+offset),
+			"Being harassed": "harassed:{}".format(int(4)+offset),
+			"Life-threatening situation": "threat:{}".format(int(4)+offset),
+			"Malicious taunts": "taunts:{}".format(int(4)+offset),
+			"Physical Provocation": "provocation:{}".format(int(6)+offset),
+			"Taste of blood when hungry": "bloodtaste:{}".format(int(6)+offset),
+			"Loved one in danger": "lovedanger:{}".format(int(7)+offset),
+			"Outright public humiliation": "humiliation:{}".format(int(8)+offset)
 		}
 
-		if clan == "Brujah":
-			offset = 2
-		else:
-			offset = 0
+
 
 		default = "provocation:" + default
 
 		options = []
 		for opt in diffoptions:
-			second_number_int = int(diffoptions[opt].split(':')[1])  # This converts it to an integer (4)
-			val = second_number_int + offset
+			val = int(diffoptions[opt].split(':')[1])  # This converts it to an integer (4)
 			if default == diffoptions[opt]:
 				options.append(discord.SelectOption(label=opt + " ({})".format(val), value=diffoptions[opt], default=True))
 			else:
@@ -1328,9 +1337,9 @@ class RollAddCelerityDropdown(discord.ui.Select):
 	def __init__(self, view: 'RollPage1LayoutView', celerity: int):
 
 		options = []
-		options.append(discord.SelectOption(label="0 dots of Celerity added to Dexterity", value=0, default=True))
+		options.append(discord.SelectOption(label="All Celerity dots used on extra actions", value=0, default=True))
 		for i in range(1,int(celerity)+1):
-			options.append(discord.SelectOption(label="{} dots of Celerity added to Dexterity".format(i), value=i))
+			options.append(discord.SelectOption(label="{} dots of Celerity used on actions".format(int(celerity)-i), value=i))
 
 		# The placeholder is what will be shown when no option is chosen
 		# The min and max values indicate we can only pick one of the three options
@@ -1358,9 +1367,11 @@ class RollAddStatBoostDropdown(discord.ui.Select):
 		max_4_spend = int(max_ability) + int(2)
 
 		options = []
-		for i in range(int(ability_level), int(max_4_spend)):
+		for i in range(int(ability_level), 10+1):
 				if i == ability_level:
 					options.append(discord.SelectOption(label="No blood spent".format(i-ability_level, ability_name), value=i, default=True))
+				elif i > int(max_ability) + int(1):
+					options.append(discord.SelectOption(label="{} spent for {} {} (lasts 3 turns)".format(int(i)-int(ability_level), ability_name, i), value=i))
 				else:
 					options.append(discord.SelectOption(label="{} spent for {} {}".format(int(i)-int(ability_level), ability_name, i), value=i))
 
@@ -1773,7 +1784,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 				# How much Celerity is added to Dex
 				self.__view.celerityar = discord.ui.ActionRow(id=forminputIDs["CelerityPulldownActionRow"])
 				self.__view.celerityar.add_item(RollAddCelerityDropdown(self.__view, celerity=info["Celerity"]))
-				self.__view.textcel = discord.ui.TextDisplay("Choose how much of your Celerity is being used for Dexterity (Total - number of extra rounds)")
+				self.__view.textcel = discord.ui.TextDisplay("Choose how much Celerity is being used for actions (Total to roll = Celerity - number of extra rounds)")
 				self.__view.container1.add_item(self.__view.textcel)
 				self.__view.container1.add_item(self.__view.celerityar)
 			if inputs["dexterity"]:
@@ -1836,7 +1847,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 			if inputs["damage_type"]:
 				# Select Damage type, e.g. Lethal
 				self.__view.damagear = discord.ui.ActionRow(id=forminputIDs["DamageTypePulldownActionRow"])
-				self.__view.damagear.add_item(RollDmgTypeDropdown(self.__view))
+				self.__view.damagear.add_item(RollDmgTypeDropdown(self.__view, info["Fortitude"]))
 				self.__view.textdmg = discord.ui.TextDisplay("Select the damage type")
 				self.__view.container1.add_item(self.__view.textdmg)
 				self.__view.container1.add_item(self.__view.damagear)
@@ -2279,11 +2290,8 @@ class RollSelectionButton(discord.ui.Button):
 					)
 		
 		elif self.label == "Roll Soak":
-			if info["damage_type"] == "Aggravated":
-				if info["Fortitude"] == 0:
-					result = roll_pool(int(info["Fortitude"]), 6, False)
-				else:
-					result = roll_pool(int(info["Fortitude"]), 6, False,info["Willpower OnOff"])
+			if info["damage_type"] == "Aggravated" and info["Fortitude"] == 0:
+				result = 0
 			else:
 				result = roll_pool(info["Fortitude"] + info["Stamina"], info["Difficulty"], False,info["Willpower OnOff"])
 
@@ -2340,8 +2348,10 @@ class RollSelectionButton(discord.ui.Button):
 						diff = diff + 1
 					if pursuit == "On":
 						diff = diff + 1
+					if info["Driving"] == 0:
+						diff = diff + 1
 
-					diff = min(9, diff)
+					diff = min(10, diff)
 					info["Difficulty"] = diff
 
 					maneuver = vehicles[vehicle]["maneuver"]
@@ -2798,7 +2808,7 @@ def format_featofstr(result, info):
 	elif success <= 0:
 		mystr = "{} has failed their feat of strength.".format(character_name, success)
 	else:
-		effort = canlift[int(strength) + int (potence) + success + wound_penalty - 1]
+		effort = canlift[int(strength) + int(potence) + success + wound_penalty - 1]
 		mystr = "{} can successfully ".format(character_name) + effort
 
 	noeffort = canlift[int(strength) + int (potence) + wound_penalty - 1]
@@ -2891,6 +2901,8 @@ def format_drive(result, info):
 		breakdown += "The roads were busy. "		
 	if info["Pursuit OnOff"] == "On":
 		breakdown += "{} was engaged in a pursuit. "	.format(character_name)	
+	if info["Driving"] == 0:
+		breakdown += "{} does not have the drive skill which makes driving more difficult."	.format(character_name)	
 
 	str = format_roll(character_name,
 				   "Driving",
