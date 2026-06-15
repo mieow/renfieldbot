@@ -2797,7 +2797,7 @@ def format_frenzy(result, info):
 def format_featofstr(result, info):
 
 	character_name = info["character_name"]
-	strength = info["Strength"]
+	strength = info["Effective Strength"]
 	potence = info["Potence"]
 	wound_penalty = info["Wound Penalty"]
 	wound_penalty_info = info["Wound Penalty Info"]
@@ -2813,8 +2813,8 @@ def format_featofstr(result, info):
 
 	noeffort = canlift[int(strength) + int (potence) + wound_penalty - 1]
 	breakdown = "Without trying, they can " + noeffort + ". "
-	if info["blood"]["Stamina"] > 0:
-		breakdown += "{} blood spent on Stamina. ".format(info["blood"]["Stamina"])
+	if info["blood"]["Strength"] > 0:
+		breakdown += "{} blood spent on Strength. ".format(info["blood"]["Strength"])
 
 	if int(wound_penalty) != 0:
 		pool = "Strength {} + Potence {} - Wound Penalty {} + Rolled Willpower {}".format(strength, potence, abs(wound_penalty), result["pool"])
