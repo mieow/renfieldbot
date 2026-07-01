@@ -1675,7 +1675,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 
 			elif selection == "Feats of Strength":
 				self.__view.clear_items()
-				self.__view.texthelp = discord.ui.TextDisplay("Strength + Potence - Wound penalties + Willpower roll, diff 9")				
+				self.__view.texthelp = discord.ui.TextDisplay("Strength + Potence + Willpower roll, diff 9")				
 
 				inputs["strength"] = 1				
 				inputs["wounds"] = 1				
@@ -2808,19 +2808,20 @@ def format_featofstr(result, info):
 	elif success <= 0:
 		mystr = "{} has failed their feat of strength.".format(character_name, success)
 	else:
-		effort = canlift[int(strength) + int(potence) + success + wound_penalty - 1]
+		effort = canlift[int(strength) + int(potence) + success - 1]
 		mystr = "{} can successfully ".format(character_name) + effort
 
-	noeffort = canlift[int(strength) + int (potence) + wound_penalty - 1]
-	breakdown = "Without trying, they can " + noeffort + ". "
+	noeffort = canlift[int(strength) + int (potence) - 1]
+	breakdown = ""
 	if info["blood"]["Strength"] > 0:
 		breakdown += "{} blood spent on Strength. ".format(info["blood"]["Strength"])
-
 	if int(wound_penalty) != 0:
-		pool = "Strength {} + Potence {} - Wound Penalty {} + Rolled Willpower {}".format(strength, potence, abs(wound_penalty), result["pool"])
-		breakdown += "They are {}".format(wound_penalty_info)
+		breakdown += "They are {}. ".format(wound_penalty_info)
+		pool = "Strength {} + Potence {} + Willpower {} roll, with a penalty of {} dice to the roll".format(strength, potence, result["pool"], wound_penalty)
 	else:
-		pool = "Strength {} + Potence {} + Rolled Willpower {}".format(strength, potence, result["pool"])
+		pool = "Strength {} + Potence {} + Willpower {}".format(strength, potence, result["pool"])
+
+	breakdown += "Without rolling, they can " + noeffort + ". "
 
 	mystr = format_roll(character_name,
 				   "Feat of Strength",
