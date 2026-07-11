@@ -1436,6 +1436,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 			rollok = 0
 		else:
 			info = load_info(self.__view, self.characterdata)
+			info["User"] = interaction.user.display_name
 			
 			if selection == "Attribute + Ability":
 				result = roll_pool(info["Perception"] + info["Alertness"])
@@ -1446,7 +1447,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 					"{} Perception + {} Alertness".format(info["Perception"], info["Alertness"]),
 					result["difficulty"],
 					result["rolls"],
-					"",
+					"", info["User"]
 					)
 			elif selection == "Initiative":
 				result = roll_initiative(info=info)
@@ -1513,7 +1514,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 					"{} {}".format(info["Background Info"], info["Background"]),
 					result["difficulty"],
 					result["rolls"],
-					""
+					"", info["User"]
 					)
 			
 			elif selection == "Degeneration":
@@ -1586,6 +1587,7 @@ class RollSubmitButtons(discord.ui.ActionRow):
 		else:
 			max_rating = get_max_level(self.characterdata)
 			info = load_info(self.__view, self.characterdata)
+			info["User"] = interaction.user.display_name
 
 			# -- Create all the inputs we might need --
 
@@ -2221,6 +2223,7 @@ class RollSelectionButton(discord.ui.Button):
 
 		rollok = 1
 		info = load_info(view, self.characterdata)
+		info["User"] = interaction.user.display_name
 
 		view.info.content = "Rolling " + self.selection
 
@@ -2286,7 +2289,7 @@ class RollSelectionButton(discord.ui.Button):
 					pool,
 					result["difficulty"],
 					result["rolls"],
-					breakdown
+					breakdown, info["User"]
 					)
 		
 		elif self.label == "Roll Soak":
@@ -2425,7 +2428,7 @@ class RollSelectionButton(discord.ui.Button):
 				   "Background {}".format(info["Background"]),
 				   result["difficulty"],
 				   result["rolls"],
-				   breakdown
+				   breakdown, info["User"]
 				   )
 
 		elif self.label == "Roll Degeneration":
@@ -2685,7 +2688,7 @@ def format_initiative(result, info):
 				   pool,
 				   0,
 				   result["rolls"],
-				   breakdown
+				   breakdown, info["User"]
 				   )
 	return str
 
@@ -2697,7 +2700,7 @@ def format_initiative(result, info):
 # *Breakdown*
 # [extra info]
 
-def format_roll (name: str, selection: str, text: str, detail: str, pool: str, difficulty: int, rolls, breakdown: str):
+def format_roll (name: str, selection: str, text: str, detail: str, pool: str, difficulty: int, rolls, breakdown: str, rolledby: str = ""):
 	long = "\n## {}'s {} Roll\n".format(name, selection)
 	if detail == "On":
 		if difficulty > 0:
@@ -2711,8 +2714,11 @@ def format_roll (name: str, selection: str, text: str, detail: str, pool: str, d
 		long += "\n*Breakdown*\n"
 		long += "> Roll(s):"+ formatdice(rolls)
 		if breakdown != "":
-			long += "\n> {}".format(breakdown)
+			long += "\n> {}\n".format(breakdown)
 	
+	if rolledby is not None and rolledby != "":
+		long += "\n> (Rolled by {})".format(rolledby)
+
 	return long
 
 def format_willpower(result, info):
@@ -2724,7 +2730,7 @@ def format_willpower(result, info):
 				   info["detail"],
 				   "Willpower {}".format(info["Willpower"]),
 				   result["difficulty"],
-				   result["rolls"],"")
+				   result["rolls"],"", info["User"])
 
 	return str
 
@@ -2757,7 +2763,7 @@ def format_soak(result, info):
 				   pool,
 				   result["difficulty"],
 				   result["rolls"],
-				   breakdown
+				   breakdown, info["User"]
 				   )
 
 	return str
@@ -2789,7 +2795,7 @@ def format_frenzy(result, info):
 				   "{} Self Control".format(info["Self Control"]),
 				   result["difficulty"],
 				   result["rolls"],
-				   breakdown)
+				   breakdown, info["User"])
 
 
 	return str
@@ -2830,7 +2836,7 @@ def format_featofstr(result, info):
 				   pool,
 				   result["difficulty"],
 				   result["rolls"],
-				   breakdown)
+				   breakdown, info["User"])
 
 	return mystr
 
@@ -2864,7 +2870,7 @@ def format_rotschreck(result, info):
 				   pool,
 				   result["difficulty"],
 				   result["rolls"],
-				   breakdown)
+				   breakdown, info["User"])
 	
 	return str
 
@@ -2912,7 +2918,7 @@ def format_drive(result, info):
 				   pool,
 				   result["difficulty"],
 				   result["rolls"],
-				   breakdown)
+				   breakdown, info["User"])
 
 	return str
 
@@ -2949,7 +2955,7 @@ def format_auraperception(result, info):
 				   pool,
 				   result["difficulty"],
 				   result["rolls"],
-				   breakdown)
+				   breakdown, info["User"])
 
 	return str
 
@@ -2991,7 +2997,7 @@ def format_spiritstouch(result, info):
 				   pool,
 				   result["difficulty"],
 				   result["rolls"],
-				   breakdown)
+				   breakdown, info["User"])
 
 	return str
 
@@ -3058,7 +3064,7 @@ def format_degeneration(result, info):
 				   pool,
 				   result["difficulty"],
 				   result["rolls"],
-				   breakdown)
+				   breakdown, info["User"])
 	
 	return str
 
@@ -3089,7 +3095,7 @@ def format_magicpath(result, info):
 				   pool,
 				   result["difficulty"],
 				   result["rolls"],
-				   breakdown)
+				   breakdown, info["User"])
 	
 	return str
 
